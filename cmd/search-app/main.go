@@ -237,13 +237,14 @@ func main() {
 		docCount, _ := idx.DocCount()
 		log.Printf("Index has %d documents", docCount)
 
-		// Simple BM25 search
-		log.Printf("Creating QueryStringQuery for: %s", query)
-		q := bleve.NewQueryStringQuery(query)
-		log.Printf("Query created: %+v", q)
+		// Use Match query instead of QueryString for better flexibility
+		log.Printf("Creating Match query for: %s", query)
+		
+		// Try Match query first (more lenient)
+		q := bleve.NewMatchQuery(query)
+		// Also try MatchAll for debugging
 		
 		search := bleve.NewSearchRequestOptions(q, 10, 0, true)
-		search.Highlight = nil // disable highlight to simplify
 		
 		log.Printf("Executing search...")
 		result, err := idx.Search(search)
