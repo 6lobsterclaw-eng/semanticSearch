@@ -17,10 +17,11 @@ var (
 	modelPath string
 )
 
-type SearchResult struct {
-	Path  string  `json:"path"`
-	Title string  `json:"title"`
-	Score float64 `json:"score"`
+	type SearchResult struct {
+	Path    string  `json:"path"`
+	Title   string  `json:"title"`
+	Score   float64 `json:"score"`
+	Snippet string  `json:"snippet"`
 }
 
 func main() {
@@ -74,11 +75,10 @@ func main() {
         h1 { color: #333; }
         .step { margin: 20px 0; padding: 15px; background: white; border: 1px solid #ddd; border-radius: 5px; }
         button { padding: 10px 20px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 3px; }
-        input { padding: 8px; width: 400px; }
+        .score { color: #666; font-size: 12px; }
+        .snippet { margin: 10px 0; padding: 10px; background: #f0f0f0; border-left: 3px solid #007bff; font-style: italic; }
         #results { margin-top: 20px; }
         .result { padding: 15px; margin: 10px 0; background: white; border: 1px solid #ddd; border-radius: 5px; }
-        .score { color: #666; font-size: 12px; }
-        .success { background: #d4edda; color: #155724; }
         .error { background: #f8d7da; color: #721c24; }
         .info { background: #d1ecf1; color: #0c5460; }
         .note { color: #666; font-size: 12px; }
@@ -154,8 +154,10 @@ func main() {
                     }
                     var html = '';
                     d.results.forEach(function(r) {
+                        var snippetHtml = r.snippet ? '<div class="snippet">' + r.snippet + '</div>' : '';
                         html += '<div class="result"><strong>' + r.title + '</strong><br>' +
                                 '<span class="score">Score: ' + r.score.toFixed(4) + '</span><br>' +
+                                snippetHtml +
                                 '<small>' + r.path + '</small></div>';
                     });
                     document.getElementById('results').innerHTML = html;
@@ -245,7 +247,11 @@ func main() {
 		// Also try MatchAll for debugging
 		
 		search := bleve.NewSearchRequestOptions(q, 10, 0, true)
-		search.Fields = []string{"title", "content", "path"} // Request stored fields
+		search.Fields = []string{"title", "content", "path"}
+		
+		// Enable highlighting to get matching snippets
+		search.Highlight = bleve.NewHighlightWithStyle("html")
+		search.Highlight.Fields = []string{"content"}
 		
 		log.Printf("Executing search...")
 		result, err := idx.Search(search)
@@ -268,10 +274,17 @@ func main() {
 				titleVal = pathVal
 			}
 			
+			// Get snippet from highlights
+			snippet := ""
+			if hit.Fragments["content"] != nil && len(hit.Fragments["content"]) > 0 {
+				snippet = hit.Fragments["content"][0]
+			}
+			
 			results = append(results, SearchResult{
-				Path:  pathVal,
-				Title: titleVal,
-				Score: hit.Score,
+				Path:    pathVal,
+				Title:   titleVal,
+				Score:   hit.Score,
+				Snippet: snippet,
 			})
 		}
 
