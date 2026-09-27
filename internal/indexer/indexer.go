@@ -1,6 +1,7 @@
 package indexer
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -66,7 +67,7 @@ func indexFile(idx bleve.Index, path string) error {
 	} else if ext == ".md" {
 		content, err = os.ReadFile(path)
 	}
-
+	
 	if err != nil {
 		log.Printf("Error reading %s: %v", path, err)
 		return err
@@ -82,26 +83,28 @@ func indexFile(idx bleve.Index, path string) error {
 		return nil
 	}
 
-	// Show first 500 chars
-	preview := string(content)
-	if len(preview) > 500 {
-		preview = preview[:500]
+	// Split content into paragraphs/chunks for better search granularity
+	chunks := splitIntoChunks(string(content), 500) // 500 chars per chunk
+	log.Printf("Split into %d chunks", len(chunks))
+	
+	// Index each chunk as separate document
+	for i, chunk := range chunks {
+		chunkID := fmt.Sprintf("%s#chunk%d", path, i)
+		chunkDoc := map[string]string{
+			"title":   fmt.Sprintf("%s [Part %d]", filepath.Base(path), i+1),
+			"content": chunk,
+			"path":    path,
+			"chunk":   fmt.Sprintf("%d", i),
+		}
+		
+		if err := idx.Index(chunkID, chunkDoc); err != nil {
+			log.Printf("Error indexing chunk %d: %v", i, err)
+			continue
+		}
 	}
-	log.Printf("Content preview:\n%s", preview)
+	
+	log.Printf("Indexed %d chunks for: %s", len(chunks), path)
 	log.Printf("=======================")
-
-	doc := map[string]string{
-		"title":   filepath.Base(path),
-		"content": string(content),
-		"path":    path,
-	}
-
-	log.Printf("Calling idx.Index(%s, doc)", path)
-	if err := idx.Index(path, doc); err != nil {
-		log.Printf("idx.Index error: %v", err)
-		return err
-	}
-	log.Printf("Indexing complete for: %s", path)
 	
 	return nil
 }
@@ -171,4 +174,80 @@ func extractPDF(path string) ([]byte, error) {
 	log.Printf("============================")
 	
 	return result, nil
+}
+
+// splitIntoChunks splits text into chunks of approximately maxSize characters
+// It splits on paragraph boundaries when possible
+func splitIntoChunks(text string, maxSize int) []string {
+	if len(text) <= maxSize {
+		return []string{text}
+	}
+	
+	var chunks []string
+	paragraphs := strings.Split(text, "\n")
+	
+	var currentChunk string
+	for _, para := range paragraphs {
+		para = strings.TrimSpace(para)
+		if para == "" {
+			continue
+		}
+		
+		// If single paragraph is too big, split by sentences
+		if len(para) > maxSize {
+			// Flush current chunk
+			if currentChunk != "" {
+				chunks = append(chunks, currentChunk)
+				currentChunk = ""
+			}
+			
+			// Split long paragraph by sentences
+			sentences := strings.Split(para, ". ")
+			var sentenceChunk string
+			for _, sent := range sentences {
+				sent = strings.TrimSpace(sent)
+				if sent == "" {
+					continue
+				}
+				// Add period back
+				if !strings.HasSuffix(sent, ".") {
+					sent = sent + "."
+				}
+				
+				if len(sentenceChunk)+len(sent) > maxSize {
+					chunks = append(chunks, sentenceChunk)
+					sentenceChunk = sent
+				} else {
+					if sentenceChunk != "" {
+						sentenceChunk += " " + sent
+					} else {
+						sentenceChunk = sent
+					}
+				}
+			}
+			if sentenceChunk != "" {
+				chunks = append(chunks, sentenceChunk)
+			}
+			continue
+		}
+		
+		// Normal paragraph
+		if len(currentChunk)+len(para) > maxSize {
+			chunks = append(chunks, currentChunk)
+			currentChunk = para
+		} else {
+			if currentChunk != "" {
+				currentChunk += "\n\n" + para
+			} else {
+				currentChunk = para
+			}
+		}
+	}
+	
+	// Don't forget last chunk
+	if currentChunk != "" {
+		chunks = append(chunks, currentChunk)
+	}
+	
+	return chunks
 }
