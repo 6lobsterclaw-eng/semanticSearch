@@ -211,31 +211,12 @@ func main() {
 		fmt.Fprint(w, html)
 	})
 
-	// Set model path endpoint - enables semantic search
+	// Set model path endpoint - DISABLED
 	http.HandleFunc("/setModel", func(w http.ResponseWriter, r *http.Request) {
-		modelPath = r.URL.Query().Get("model")
-		// goccy/go-llama uses WASM - no external library needed
-
-		if modelPath == "" {
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "no model path"})
-			return
-		}
-
-		log.Printf("Initializing semantic search with model: %s", modelPath)
-
-		// Initialize semantic search
-		err := sem.Init(modelPath) // No libPath needed for WASM
-		if err != nil {
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": err.Error()})
-			return
-		}
-
-		semMu.Lock()
-		semOn = true
-		semMu.Unlock()
-
-		log.Println("Semantic search enabled")
-		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "dimension": 768})
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false, 
+			"error": "Semantic search temporarily disabled - using BM25 mode",
+		})
 	})
 
 	// Disable sem search - fall back to BM25
