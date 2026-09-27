@@ -9,7 +9,7 @@ import (
 )
 
 func TestSearcher(t *testing.T) {
-	db, err := storage.NewDB(":memory!")
+	db, err := storage.NewDB(":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
