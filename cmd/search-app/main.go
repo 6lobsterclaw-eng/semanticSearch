@@ -7,17 +7,21 @@ import (
 	"net/http"
 	"os/exec"
 	"runtime"
+	"sync"
 
 	"github.com/blevesearch/bleve/v2"
 	"semantic-search/internal/indexer"
+	sem "semantic-search/internal/semantic"
 )
 
 var (
-	idx       bleve.Index
-	modelPath string
+	idx        bleve.Index
+	modelPath  string
+	semMu sync.RWMutex
+	semOn bool
 )
 
-	type SearchResult struct {
+type SearchResult struct {
 	Path    string  `json:"path"`
 	Title   string  `json:"title"`
 	Score   float64 `json:"score"`
@@ -25,44 +29,42 @@ var (
 }
 
 func main() {
-	log.Println("Starting Semantic Search (BM25)...")
+	log.Println("Starting Semantic Search App...")
 
 	// Create index with proper mapping
 	mapping := bleve.NewIndexMapping()
-	
-	// Define document mapping - specify which fields to index
+
+	// Define document mapping
 	docMapping := bleve.NewDocumentMapping()
-	
-	// Title field - indexed, stored
+
+	// Title field
 	titleField := bleve.NewTextFieldMapping()
 	titleField.Index = true
 	titleField.Store = true
 	docMapping.AddFieldMappingsAt("title", titleField)
-	
-	// Content field - indexed, stored (this is the main searchable field)
+
+	// Content field
 	contentField := bleve.NewTextFieldMapping()
 	contentField.Index = true
 	contentField.Store = true
 	docMapping.AddFieldMappingsAt("content", contentField)
-	
-	// Path field - stored but not indexed
+
+	// Path field
 	pathField := bleve.NewTextFieldMapping()
 	pathField.Index = false
 	pathField.Store = true
 	docMapping.AddFieldMappingsAt("path", pathField)
-	
+
 	mapping.DefaultMapping = docMapping
-	
-	// Also set default field options
 	mapping.DefaultType = "text"
 	mapping.DefaultAnalyzer = "standard"
-	
+
 	var err error
 	idx, err = bleve.NewMemOnly(mapping)
 	if err != nil {
 		log.Fatalf("Failed to create index: %v", err)
 	}
-	log.Println("Search index ready (BM25 - no model needed)")
+	log.Println("BM25 index ready")
 
 	// HTML UI
 	html := `
@@ -74,53 +76,82 @@ func main() {
         body { font-family: Arial; padding: 20px; max-width: 900px; margin: 0 auto; background: #f5f5f5; }
         h1 { color: #333; }
         .step { margin: 20px 0; padding: 15px; background: white; border: 1px solid #ddd; border-radius: 5px; }
-        button { padding: 10px 20px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 3px; }
+        button { padding: 10px 20px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 3px; margin-right: 5px; }
+        button.secondary { background: #6c757d; }
         .score { color: #666; font-size: 12px; }
         .snippet { margin: 10px 0; padding: 10px; background: #f0f0f0; border-left: 3px solid #007bff; font-style: italic; }
         #results { margin-top: 20px; }
         .result { padding: 15px; margin: 10px 0; background: white; border: 1px solid #ddd; border-radius: 5px; }
         .error { background: #f8d7da; color: #721c24; }
         .info { background: #d1ecf1; color: #0c5460; }
+        .success { background: #d4edda; color: #155724; }
         .note { color: #666; font-size: 12px; }
+        .mode-badge { display: inline-block; padding: 3px 8px; border-radius: 3px; font-size: 11px; margin-left: 10px; }
+        .mode-bm25 { background: #ffc107; color: #000; }
+        .mode-sem { background: #28a745; color: #fff; }
     </style>
 </head>
 <body>
-    <h1>Semantic Search (BM25)</h1>
+    <h1>Semantic Search <span id="modeBadge" class="mode-badge mode-bm25">BM25</span></h1>
     
     <div class="step">
-        <h3>Step 1: (Optional) GGUF Model for Semantic Search</h3>
-        <input type="text" id="modelPath" placeholder="C:\path\to\model.gguf">
-        <button onclick="setModel()">Set Model</button>
+        <h3>Step 1: Configure GGUF Model (for Semantic Search)</h3>
+        <input type="text" id="modelPath" placeholder="C:\path\to\nomic-embed-text-v1.5.gguf" style="width: 400px;">
+        <input type="text" id="libPath" placeholder="C:\path\to\llama.dll (optional)" style="width: 250px;">
+        <button onclick="setModel()">Enable Semantic Search</button>
+        <button class="secondary" onclick="disableSemantic()">Use BM25 Only</button>
         <div id="modelStatus"></div>
-        <p class="note">Note: BM25 doesn't need a model. This is for future semantic search (AI embeddings).</p>
+        <p class="note">Note: BM25 works without a model. Semantic search needs GGUF model + llama.dll</p>
     </div>
     
     <div class="step">
         <h3>Step 2: Select Folder to Index</h3>
         <input type="text" id="folderPath" placeholder="C:\path\to\documents">
         <button onclick="indexFolder()">Index Folder</button>
+        <button class="secondary" onclick="clearIndex()">Clear Index</button>
         <div id="indexStatus"></div>
     </div>
     
     <div class="step">
         <h3>Step 3: Search</h3>
-        <input type="text" id="query" placeholder="Enter search query">
+        <input type="text" id="query" placeholder="Enter search query" style="width: 400px;">
         <button onclick="doSearch()">Search</button>
-        <button onclick="dumpIndex()">Dump Index</button>
     </div>
     
     <div id="results"></div>
 
     <script>
+        var semMode = false;
+        
         function setModel() {
-            var path = document.getElementById('modelPath').value;
-            if(!path) { alert('Please enter model path'); return; }
-            document.getElementById('modelStatus').innerHTML = '<div class="info">Setting model path...</div>';
-            fetch('/setModel?path=' + encodeURIComponent(path))
+            var modelPath = document.getElementById('modelPath').value;
+            var libPath = document.getElementById('libPath').value;
+            if(!modelPath) { alert('Please enter model path'); return; }
+            document.getElementById('modelStatus').innerHTML = '<div class="info">Loading model... (this may take a minute)</div>';
+            var url = '/setModel?model=' + encodeURIComponent(modelPath);
+            if(libPath) url += '&lib=' + encodeURIComponent(libPath);
+            fetch(url)
                 .then(r => r.json())
                 .then(d => {
-                    if(d.success) document.getElementById('modelStatus').innerHTML = '<div class="success">Model path saved!</div>';
-                    else document.getElementById('modelStatus').innerHTML = '<div class="error">Error: ' + d.error + '</div>';
+                    if(d.success) {
+                        semMode = true;
+                        document.getElementById('modelStatus').innerHTML = '<div class="success">Semantic search enabled! (dimension: ' + d.dimension + ')</div>';
+                        document.getElementById('modeBadge').textContent = 'SEMANTIC';
+                        document.getElementById('modeBadge').className = 'mode-badge mode-sem';
+                    } else {
+                        document.getElementById('modelStatus').innerHTML = '<div class="error">Error: ' + d.error + '</div>';
+                    }
+                });
+        }
+        
+        function disableSemantic() {
+            fetch('/disableSemantic')
+                .then(r => r.json())
+                .then(d => {
+                    semMode = false;
+                    document.getElementById('modelStatus').innerHTML = '<div class="success">BM25 mode enabled</div>';
+                    document.getElementById('modeBadge').textContent = 'BM25';
+                    document.getElementById('modeBadge').className = 'mode-badge mode-bm25';
                 });
         }
         
@@ -136,11 +167,20 @@ func main() {
                 });
         }
         
+        function clearIndex() {
+            fetch('/clearIndex')
+                .then(r => r.json())
+                .then(d => {
+                    document.getElementById('indexStatus').innerHTML = '<div class="success">Index cleared</div>';
+                    document.getElementById('results').innerHTML = '';
+                });
+        }
+        
         function doSearch() {
             var query = document.getElementById('query').value;
             if(!query) { alert('Please enter query'); return; }
             document.getElementById('results').innerHTML = '<div class="info">Searching...</div>';
-            fetch('/search?q=' + encodeURIComponent(query))
+            fetch('/search?q=' + encodeURIComponent(query) + '&sem=' + semMode)
                 .then(r => r.json())
                 .then(d => {
                     console.log('Search result:', d);
@@ -149,7 +189,7 @@ func main() {
                         return;
                     }
                     if(d.results.length == 0) {
-                        document.getElementById('results').innerHTML = '<div>No results found - try indexing a folder first</div>';
+                        document.getElementById('results').innerHTML = '<div>No results found</div>';
                         return;
                     }
                     var html = '';
@@ -163,28 +203,6 @@ func main() {
                     document.getElementById('results').innerHTML = html;
                 });
         }
-        
-        function dumpIndex() {
-            document.getElementById('results').innerHTML = '<div class="info">Dumping index...</div>';
-            fetch('/debug/dump')
-                .then(r => r.json())
-                .then(d => {
-                    console.log('Dump result:', d);
-                    if(d.error) {
-                        document.getElementById('results').innerHTML = '<div class="error">Error: ' + d.error + '</div>';
-                        return;
-                    }
-                    var html = '<h3>Indexed Documents: ' + d.count + '</h3>';
-                    d.documents.forEach(function(doc) {
-                        html += '<div class="result"><strong>' + doc.id + '</strong><br>' +
-                                '<small>Title: ' + (doc.title || 'N/A') + '</small><br>' +
-                                '<small>Content length: ' + (doc.content ? doc.content.length : 0) + ' chars</small><br>' +
-                                '<pre style="max-height:100px;overflow:scroll;background:#f5f5f5;padding:5px;">' + 
-                                (doc.content ? doc.content.substring(0, 500) + '...' : 'No content') + '</pre></div>';
-                    });
-                    document.getElementById('results').innerHTML = html;
-                });
-        }
     </script>
 </body>
 </html>`
@@ -193,15 +211,67 @@ func main() {
 		fmt.Fprint(w, html)
 	})
 
-	// Set model path endpoint
+	// Set model path endpoint - enables semantic search
 	http.HandleFunc("/setModel", func(w http.ResponseWriter, r *http.Request) {
-		path := r.URL.Query().Get("path")
-		if path == "" {
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "no path"})
+		modelPath = r.URL.Query().Get("model")
+		// goccy/go-llama uses WASM - no external library needed
+
+		if modelPath == "" {
+			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "no model path"})
 			return
 		}
-		modelPath = path
-		log.Printf("Model path set to: %s", path)
+
+		log.Printf("Initializing semantic search with model: %s", modelPath)
+
+		// Initialize semantic search
+		err := sem.Init(modelPath) // No libPath needed for WASM
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": err.Error()})
+			return
+		}
+
+		semMu.Lock()
+		semOn = true
+		semMu.Unlock()
+
+		log.Println("Semantic search enabled")
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "dimension": 768})
+	})
+
+	// Disable sem search - fall back to BM25
+	http.HandleFunc("/disableSemantic", func(w http.ResponseWriter, r *http.Request) {
+		semMu.Lock()
+		semOn = false
+		semMu.Unlock()
+		sem.Close()
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+	})
+
+	// Clear index
+	http.HandleFunc("/clearIndex", func(w http.ResponseWriter, r *http.Request) {
+		// Create new empty index
+		mapping := bleve.NewIndexMapping()
+		docMapping := bleve.NewDocumentMapping()
+		titleField := bleve.NewTextFieldMapping()
+		titleField.Index = true
+		titleField.Store = true
+		docMapping.AddFieldMappingsAt("title", titleField)
+		contentField := bleve.NewTextFieldMapping()
+		contentField.Index = true
+		contentField.Store = true
+		docMapping.AddFieldMappingsAt("content", contentField)
+		pathField := bleve.NewTextFieldMapping()
+		pathField.Index = false
+		pathField.Store = true
+		docMapping.AddFieldMappingsAt("path", pathField)
+		mapping.DefaultMapping = docMapping
+		mapping.DefaultType = "text"
+		mapping.DefaultAnalyzer = "standard"
+
+		idx, _ = bleve.NewMemOnly(mapping)
+		sem.Close()
+
+		log.Println("Index cleared")
 		json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 	})
 
@@ -215,10 +285,26 @@ func main() {
 
 		log.Printf("Indexing folder: %s", path)
 
+		// Check if sem mode is on
+		semMu.RLock()
+		useSemantic := semOn
+		semMu.RUnlock()
+
 		count, err := indexer.IndexFolder(idx, path)
 		if err != nil {
 			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": err.Error()})
 			return
+		}
+
+		// If sem mode is on, also build embedding index
+		if useSemantic {
+			log.Printf("Building sem index...")
+			err = indexer.IndexForSemantic(idx, path, sem.AddChunk)
+			if err != nil {
+				log.Printf("Semantic indexing error: %v", err)
+				// Continue anyway - BM25 still works
+			}
+			log.Printf("Semantic index built with %d chunks", sem.ChunkCount())
 		}
 
 		log.Printf("Indexed %d files", count)
@@ -228,32 +314,45 @@ func main() {
 	// Search endpoint
 	http.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query().Get("q")
+		useSemantic := r.URL.Query().Get("sem") == "true"
+
 		if query == "" {
 			json.NewEncoder(w).Encode(map[string]interface{}{"error": "no query"})
 			return
 		}
 
-		log.Printf("Searching for: %s", query)
+		log.Printf("Searching for: %s (sem: %v)", query, useSemantic)
 
-		// Get index stats
+		// Check sem mode
+		semMu.RLock()
+		semEnabled := semOn
+		semMu.RUnlock()
+
+		// Use sem search if enabled
+		if semEnabled && useSemantic {
+			log.Println("Using sem search")
+			results, err := sem.Search(query, 10)
+			if err != nil {
+				log.Printf("Semantic search error: %v", err)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
+				return
+			}
+			log.Printf("Semantic search returned %d results", len(results))
+			json.NewEncoder(w).Encode(map[string]interface{}{"results": results})
+			return
+		}
+
+		// Fall back to BM25
+		log.Println("Using BM25 search")
 		docCount, _ := idx.DocCount()
 		log.Printf("Index has %d documents", docCount)
 
-		// Use Match query instead of QueryString for better flexibility
-		log.Printf("Creating Match query for: %s", query)
-		
-		// Try Match query first (more lenient)
 		q := bleve.NewMatchQuery(query)
-		// Also try MatchAll for debugging
-		
 		search := bleve.NewSearchRequestOptions(q, 10, 0, true)
 		search.Fields = []string{"title", "content", "path"}
-		
-		// Enable highlighting to get matching snippets
 		search.Highlight = bleve.NewHighlightWithStyle("html")
 		search.Highlight.Fields = []string{"content"}
-		
-		log.Printf("Executing search...")
+
 		result, err := idx.Search(search)
 		if err != nil {
 			log.Printf("Search error: %v", err)
@@ -261,10 +360,7 @@ func main() {
 			return
 		}
 
-		log.Printf("Search result: Took=%v, Total=%d, MaxScore=%f", 
-			result.Took, result.Total, result.MaxScore)
-
-		log.Printf("Search returned %d hits", len(result.Hits))
+		log.Printf("BM25 search returned %d hits", len(result.Hits))
 
 		var results []SearchResult
 		for _, hit := range result.Hits {
@@ -273,13 +369,12 @@ func main() {
 			if titleVal == "" {
 				titleVal = pathVal
 			}
-			
-			// Get snippet from highlights
+
 			snippet := ""
 			if hit.Fragments["content"] != nil && len(hit.Fragments["content"]) > 0 {
 				snippet = hit.Fragments["content"][0]
 			}
-			
+
 			results = append(results, SearchResult{
 				Path:    pathVal,
 				Title:   titleVal,
@@ -288,38 +383,7 @@ func main() {
 			})
 		}
 
-		json.NewEncoder(w).Encode(map[string]interface{}{"results": results, "total": len(results)})
-	})
-
-	// Debug: dump all indexed content
-	http.HandleFunc("/debug/dump", func(w http.ResponseWriter, r *http.Request) {
-		log.Println("Dumping index contents...")
-		
-		allQuery := bleve.NewMatchAllQuery()
-		allSearch := bleve.NewSearchRequestOptions(allQuery, 100, 0, false)
-		allSearch.Fields = []string{"*"} // Get all fields
-		
-		allResults, err := idx.Search(allSearch)
-		if err != nil {
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
-			return
-		}
-		
-		var docs []map[string]interface{}
-		for _, hit := range allResults.Hits {
-			doc := map[string]interface{}{
-				"id":    hit.ID,
-				"score": hit.Score,
-			}
-			log.Printf("Doc %s fields: %+v", hit.ID, hit.Fields)
-			for k, v := range hit.Fields {
-				doc[k] = v
-			}
-			docs = append(docs, doc)
-		}
-		
-		log.Printf("Dumped %d documents", len(docs))
-		json.NewEncoder(w).Encode(map[string]interface{}{"documents": docs, "count": len(docs)})
+		json.NewEncoder(w).Encode(map[string]interface{}{"results": results})
 	})
 
 	addr := ":8080"

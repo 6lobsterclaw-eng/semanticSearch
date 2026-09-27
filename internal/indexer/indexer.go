@@ -251,3 +251,76 @@ func splitIntoChunks(text string, maxSize int) []string {
 	
 	return chunks
 }
+
+// AddChunkFunc is a callback function type for adding chunks to semantic index
+type AddChunkFunc func(path, title, content string) error
+
+// IndexForSemantic indexes documents for semantic search using embeddings
+// It walks the folder and calls addChunk for each document's content chunks
+func IndexForSemantic(idx bleve.Index, dirPath string, addChunk AddChunkFunc) error {
+	log.Printf("Semantic indexing directory: %s", dirPath)
+
+	if _, err := os.Stat(dirPath); os.IsNotExist(err) {
+		return err
+	}
+
+	return filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+
+		if info.IsDir() {
+			return nil
+		}
+
+		ext := filepath.Ext(path)
+		if ext != ".pdf" && ext != ".md" {
+			return nil
+		}
+
+		log.Printf("Semantic indexing: %s", path)
+
+		var content string
+		var contentBytes []byte
+
+		if ext == ".pdf" {
+			var err error
+			contentBytes, err = extractPDF(path)
+			if err != nil {
+				log.Printf("Error extracting PDF %s: %v", path, err)
+				return nil
+			}
+			content = string(contentBytes)
+		} else if ext == ".md" {
+			var err error
+			contentBytes, err = os.ReadFile(path)
+			if err != nil {
+				log.Printf("Error reading MD %s: %v", path, err)
+				return nil
+			}
+			content = string(contentBytes)
+		}
+
+		if len(content) == 0 {
+			return nil
+		}
+
+		// Get title from filename
+		title := filepath.Base(path)
+
+		// Chunk the content
+		chunks := splitIntoChunks(content, 500)
+		log.Printf("Split into %d chunks", len(chunks))
+
+		// Add each chunk to semantic index
+		for i, chunk := range chunks {
+			chunkTitle := fmt.Sprintf("%s (chunk %d)", title, i+1)
+			if err := addChunk(path, chunkTitle, chunk); err != nil {
+				log.Printf("Error adding chunk %d for %s: %v", i, path, err)
+				continue
+			}
+		}
+
+		return nil
+	})
+}
