@@ -211,12 +211,33 @@ func main() {
 		fmt.Fprint(w, html)
 	})
 
-	// Set model path endpoint - shows BM25 mode (semantic disabled)
+	// Set model path endpoint - enables semantic search with llama.dll
 	http.HandleFunc("/setModel", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error": "Semantic search disabled - using BM25 mode (works fully offline)",
-		})
+		modelPath = r.URL.Query().Get("model")
+		libPath := r.URL.Query().Get("lib")
+
+		if modelPath == "" {
+			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "no model path"})
+			return
+		}
+		if libPath == "" {
+			libPath = "llama.dll"
+		}
+
+		log.Printf("Initializing semantic search with model: %s, lib: %s", modelPath, libPath)
+
+		err := sem.Init(modelPath, libPath)
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": err.Error()})
+			return
+		}
+
+		semMu.Lock()
+		semOn = true
+		semMu.Unlock()
+
+		log.Println("Semantic search enabled")
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 	})
 
 	// Disable sem search - fall back to BM25

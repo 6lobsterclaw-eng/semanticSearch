@@ -4,6 +4,7 @@ go 1.27.0
 
 require (
 	github.com/blevesearch/bleve/v2 v2.6.1
+	github.com/develerltd/go-llama-pure v0.4.0
 	github.com/gomarkdown/markdown v0.0.0-20260923180740-94fc73f6b1a3
 	github.com/kelindar/search v0.5.0
 	github.com/kelindar/search/llama v0.0.0-20260919083510-1c30877fb8bd
@@ -34,6 +35,8 @@ require (
 	github.com/blevesearch/zapx/v17 v17.2.3 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/ebitengine/purego v0.11.0 // indirect
+	github.com/goccy/go-llama v0.5.1 // indirect
+	github.com/goccy/llamawasm2go v0.4.1 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/json-iterator/go v0.0.0-20171115153421-f7279a603ede // indirect
