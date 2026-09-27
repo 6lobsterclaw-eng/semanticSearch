@@ -23,9 +23,9 @@ type SearchResult struct {
 func main() {
 	log.Println("Starting Semantic Search (BM25)...")
 
-	// Create default in-memory index
+	// Create default in-memory index with default mapping
 	var err error
-	idx, err = bleve.NewMemOnly(nil)
+	idx, err = bleve.NewMemOnly(bleve.NewIndexMapping())
 	if err != nil {
 		log.Fatalf("Failed to create index: %v", err)
 	}
