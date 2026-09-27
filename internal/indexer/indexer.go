@@ -1,121 +1,96 @@
 package indexer
 
 import (
-	"context"
+	"log"
 	"os"
 	"path/filepath"
-	"strings"
-	"time"
 
-	"github.com/google/uuid"
-	"github.com/kelindar/search"
-	"semantic-search/internal/storage"
+	"github.com/blevesearch/bleve/v2"
+	"github.com/ledongthuc/pdf"
 )
 
-type Indexer struct {
-	db       *storage.DB
-	embedder *Embedder
-}
+func IndexFolder(idx bleve.Index, dirPath string) (int, error) {
+	log.Printf("Indexing directory: %s", dirPath)
 
-func NewIndexer(db *storage.DB, modelPath string) (*Indexer, error) {
-	emb, err := NewEmbedder(modelPath)
-	if err != nil {
-		return nil, err
-	}
-	return &Indexer{
-		db:       db,
-		embedder: emb,
-	}, nil
-}
-
-func (idx *Indexer) IndexDir(ctx context.Context, dirPath string) error {
-	var files []string
-
+	var count int
 	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
+
 		if info.IsDir() {
 			return nil
 		}
-		ext := strings.ToLower(filepath.Ext(path))
-		if ext == ".pdf" || ext == ".md" {
-			files = append(files, path)
+
+		ext := filepath.Ext(path)
+		if ext != ".pdf" && ext != ".md" {
+			return nil
 		}
+
+		log.Printf("Indexing: %s", path)
+
+		if err := indexFile(idx, path); err != nil {
+			log.Printf("Error indexing %s: %v", path, err)
+			return nil
+		}
+
+		count++
 		return nil
 	})
+
 	if err != nil {
-		return err
+		return count, err
 	}
 
-	for _, file := range files {
-		if err := idx.indexFile(ctx, file); err != nil {
-			continue
-		}
-	}
-
-	return nil
+	log.Printf("Indexed %d files", count)
+	return count, nil
 }
 
-func (idx *Indexer) indexFile(ctx context.Context, path string) error {
-	ext := strings.ToLower(filepath.Ext(path))
-
-	var content string
+func indexFile(idx bleve.Index, path string) error {
+	ext := filepath.Ext(path)
+	var content []byte
 	var err error
 
-	switch ext {
-	case ".pdf":
-		content, err = ExtractText(path)
-	case ".md":
-		content, err = ExtractMarkdown(path)
-	default:
-		return nil
+	if ext == ".pdf" {
+		content, err = extractPDF(path)
+	} else if ext == ".md" {
+		content, err = os.ReadFile(path)
 	}
 
 	if err != nil {
 		return err
 	}
 
-	title := ExtractTitle(path)
-
-	doc := storage.Document{
-		ID:        uuid.New().String(),
-		Path:      path,
-		Content:   content,
-		Title:     title,
-		IndexedAt: time.Now().Unix(),
+	// Use file path as unique key
+	doc := map[string]string{
+		"title":   filepath.Base(path),
+		"content": string(content),
+		"path":    path,
 	}
 
-	if err := idx.db.InsertDocument(ctx, doc); err != nil {
-		return err
-	}
+	return idx.Index(path, doc)
+}
 
-	// Generate embedding
-	vec, err := idx.embedder.Embed(content)
+func extractPDF(path string) ([]byte, error) {
+	f, r, err := pdf.Open(path)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	defer f.Close()
+
+	var text []byte
+	for i := 1; i <= r.NumPage(); i++ {
+		p := r.Page(i)
+		if p.V.IsNull() {
+			continue
+		}
+		txt, err := p.GetPlainText(nil)
+		if err != nil {
+			continue
+		}
+		text = append(text, []byte(txt)...)
+		text = append(text, '\n')
 	}
 
-	// Add to kelindar search index
-	idx.embedder.AddDocument(doc.ID, vec, doc.Title)
-
-	// Store embedding in DB
-	return idx.db.InsertEmbedding(ctx, doc.ID, vec)
-}
-
-func (idx *Indexer) SaveIndex(path string) error {
-	return idx.embedder.SaveIndex(path)
-}
-
-func (idx *Indexer) LoadIndex(path string) error {
-	return idx.embedder.LoadIndex(path)
-}
-
-// Search searches indexed documents using kelindar/search
-func (idx *Indexer) Search(query string, k int) []search.Result[string] {
-	vec, err := idx.embedder.Embed(query)
-	if err != nil {
-		return nil
-	}
-	return idx.embedder.Search(vec, k)
+	return text, nil
 }
