@@ -15,7 +15,7 @@ require (
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/ebitengine/purego v0.11.1 // indirect
+	github.com/ebitengine/purego v0.11.0 // indirect
 	github.com/goki/freetype v0.0.0-20181231101311-fa8a33aabaff // indirect
 	github.com/kelindar/iostream v1.4.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
@@ -28,9 +28,9 @@ require (
 	github.com/stretchr/testify v1.12.1 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/image v0.0.0-20200430140353-33d19683fad8 // indirect
-	golang.org/x/net v0.43.0 // indirect
+	golang.org/x/net v0.0.0-20200324143707-d3edc9973b7e // indirect
 	golang.org/x/sys v0.48.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/text v0.3.2 // indirect
 	gopkg.in/Knetic/govaluate.v3 v3.0.0 // indirect
 	modernc.org/libc v1.75.7 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
