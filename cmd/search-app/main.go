@@ -180,6 +180,21 @@ func main() {
 
 		log.Printf("Searching for: %s", query)
 
+		// Get index stats
+		docCount, _ := idx.DocCount()
+		log.Printf("Index has %d documents", docCount)
+
+		// List all indexed documents
+		allQuery := bleve.NewMatchAllQuery()
+		allSearch := bleve.NewSearchRequestOptions(allQuery, 100, 0, false)
+		allResults, err := idx.Search(allSearch)
+		if err == nil {
+			log.Printf("All indexed docs: %d hits", len(allResults.Hits))
+			for _, hit := range allResults.Hits {
+				log.Printf("  - ID: %s", hit.ID)
+			}
+		}
+
 		// Simple BM25 search
 		q := bleve.NewQueryStringQuery(query)
 		search := bleve.NewSearchRequestOptions(q, 10, 0, true)

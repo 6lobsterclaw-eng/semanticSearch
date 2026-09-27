@@ -114,5 +114,13 @@ func extractPDF(path string) ([]byte, error) {
 	}
 	
 	log.Printf("Extracted %d bytes from PDF using pdftotext", len(content))
+	
+	// Log first 200 chars of content for debugging
+	preview := string(content)
+	if len(preview) > 200 {
+		preview = preview[:200]
+	}
+	log.Printf("Content preview: %s", preview)
+	
 	return content, nil
 }
