@@ -1,13 +1,12 @@
 package indexer
 
 import (
-	"bytes"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 
 	"github.com/blevesearch/bleve/v2"
+	"github.com/ledongthuc/pdf"
 )
 
 func IndexFolder(idx bleve.Index, dirPath string) (int, error) {
@@ -83,44 +82,51 @@ func indexFile(idx bleve.Index, path string) error {
 		"path":    path,
 	}
 
+	log.Printf("Indexing document: %s (content length: %d)", path, len(content))
 	return idx.Index(path, doc)
 }
 
 func extractPDF(path string) ([]byte, error) {
 	log.Printf("Extracting PDF: %s", path)
 	
-	// Try pdftotext - handles encrypted PDFs well
-	// -layout preserves formatting
-	// -enc UTF-8 ensures proper encoding
-	cmd := exec.Command("pdftotext", "-layout", "-enc", "UTF-8", path, "-")
-	
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	
-	err := cmd.Run()
+	// Try to open PDF
+	f, r, err := pdf.Open(path)
 	if err != nil {
-		log.Printf("pdftotext error: %v", err)
-		if stderr.Len() > 0 {
-			log.Printf("pdftotext stderr: %s", stderr.String())
-		}
+		log.Printf("PDF open error: %v", err)
 		return nil, err
 	}
+	defer f.Close()
 	
-	content := stdout.Bytes()
-	if len(content) == 0 {
-		log.Printf("pdftotext returned empty content")
+	var text []byte
+	numPages := r.NumPage()
+	log.Printf("PDF has %d pages", numPages)
+	
+	for i := 1; i <= numPages; i++ {
+		p := r.Page(i)
+		if p.V.IsNull() {
+			continue
+		}
+		txt, err := p.GetPlainText(nil)
+		if err != nil {
+			continue
+		}
+		text = append(text, []byte(txt)...)
+		text = append(text, '\n')
+	}
+	
+	if len(text) == 0 {
+		log.Printf("No text extracted from PDF")
 		return nil, nil
 	}
 	
-	log.Printf("Extracted %d bytes from PDF using pdftotext", len(content))
+	log.Printf("Extracted %d bytes from PDF", len(text))
 	
-	// Log first 200 chars of content for debugging
-	preview := string(content)
+	// Log first 200 chars for debugging
+	preview := string(text)
 	if len(preview) > 200 {
 		preview = preview[:200]
 	}
 	log.Printf("Content preview: %s", preview)
 	
-	return content, nil
+	return text, nil
 }
