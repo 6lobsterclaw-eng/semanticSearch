@@ -55,12 +55,6 @@ func joinWithSpace(parts []string) string {
 	return result
 }
 
-// ExtractTitle returns the filename without extension as title
-func ExtractTitle(path string) string {
-	// Simplified - just return empty, will be handled by indexer
-	return ""
-}
-
 // SkipPDF returns true if file should be skipped (not a PDF)
 func SkipPDF(path string) bool {
 	// This is a placeholder - actual implementation checks extension

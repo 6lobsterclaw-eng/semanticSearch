@@ -3,6 +3,7 @@ module semantic-search
 go 1.25.0
 
 require (
+	github.com/gomarkdown/markdown v0.0.0-20260923180740-94fc73f6b1a3
 	github.com/ledongthuc/pdf v0.0.0-20260907135840-6c8c28e0e8a0
 	modernc.org/sqlite v1.59.0
 )
