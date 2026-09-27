@@ -88,44 +88,78 @@ func indexFile(idx bleve.Index, path string) error {
 func extractPDF(path string) ([]byte, error) {
 	log.Printf("Extracting PDF: %s", path)
 	
-	// Try to open PDF
+	// First try regular open
 	f, r, err := pdf.Open(path)
-	if err != nil {
-		// Log the error but continue
-		log.Printf("PDF open error: %v", err)
-		
-		// Try to read anyway - some PDFs can still be read even with encryption warning
-		// The library might have opened it partially
-	}
-	
-	// Even if there's an error, try to read if we got a valid reader
-	if r != nil {
+	if err == nil {
+		// Success - normal PDF
 		defer f.Close()
-		
-		var text []byte
-		numPages := r.NumPage()
-		log.Printf("PDF has %d pages", numPages)
-		
-		for i := 1; i <= numPages; i++ {
-			p := r.Page(i)
-			if p.V.IsNull() {
-				continue
-			}
-			txt, err := p.GetPlainText(nil)
-			if err != nil {
-				continue
-			}
-			text = append(text, []byte(txt)...)
-			text = append(text, '\n')
-		}
-		
-		if len(text) > 0 {
-			log.Printf("Extracted %d bytes from PDF", len(text))
-			return text, nil
-		}
+		return extractTextFromReader(r)
 	}
 	
-	// If we get here, the PDF couldn't be read properly
-	// Return error so it's logged
-	return nil, err
+	// If regular open fails, try with encrypted reader using empty password
+	// This should work for PDFs that are encrypted for "change" but allow reading
+	log.Printf("Regular open failed, trying encrypted reader with empty password: %v", err)
+	
+	file, err := os.Open(path)
+	if err != nil {
+		log.Printf("Error opening file: %v", err)
+		return nil, err
+	}
+	defer file.Close()
+	
+	stat, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	
+	// Try with empty password - callback returns "" to try empty password
+	pw := func() string { return "" }
+	reader, err := pdf.NewReaderEncrypted(file, stat.Size(), pw)
+	if err != nil {
+		log.Printf("Encrypted reader failed: %v", err)
+		return nil, err
+	}
+	
+	// Create wrapper to match the Reader interface
+	wrapper := &pdfReaderWrapper{reader}
+	return extractTextFromReader(wrapper)
+}
+
+type pdfReaderWrapper struct {
+	r *pdf.Reader
+}
+
+func (w *pdfReaderWrapper) NumPage() int {
+	return w.r.NumPage()
+}
+
+func (w *pdfReaderWrapper) Page(num int) pdf.Page {
+	return w.r.Page(num)
+}
+
+func extractTextFromReader(r interface{ NumPage() int; Page(int) pdf.Page }) ([]byte, error) {
+	var text []byte
+	numPages := r.NumPage()
+	log.Printf("PDF has %d pages", numPages)
+	
+	for i := 1; i <= numPages; i++ {
+		page := r.Page(i)
+		if page.V.IsNull() {
+			continue
+		}
+		txt, err := page.GetPlainText(nil)
+		if err != nil {
+			continue
+		}
+		text = append(text, []byte(txt)...)
+		text = append(text, '\n')
+	}
+	
+	if len(text) == 0 {
+		log.Printf("No text extracted from PDF")
+		return nil, nil
+	}
+	
+	log.Printf("Extracted %d bytes from PDF", len(text))
+	return text, nil
 }

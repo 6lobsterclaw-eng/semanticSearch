@@ -8,6 +8,7 @@ require (
 	github.com/kelindar/search v0.5.0
 	github.com/kelindar/search/llama v0.0.0-20260919083510-1c30877fb8bd
 	github.com/ledongthuc/pdf v0.0.0-20260907135840-6c8c28e0e8a0
+	github.com/unidoc/unipdf/v3 v3.69.0
 	modernc.org/sqlite v1.59.0
 )
 
@@ -34,19 +35,35 @@ require (
 	github.com/blevesearch/zapx/v17 v17.2.3 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/ebitengine/purego v0.11.0 // indirect
+	github.com/gabriel-vasile/mimetype v1.4.8 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/json-iterator/go v0.0.0-20171115153421-f7279a603ede // indirect
+	github.com/jung-kurt/gofpdf v1.16.2 // indirect
 	github.com/kelindar/iostream v1.4.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
+	github.com/pdfcpu/pdfcpu v0.15.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	github.com/sirupsen/logrus v1.9.3 // indirect
+	github.com/stretchr/testify v1.12.1 // indirect
+	github.com/unidoc/freetype v0.2.3 // indirect
+	github.com/unidoc/pkcs7 v0.2.0 // indirect
+	github.com/unidoc/timestamp v0.0.0-20200412005513-91597fd3793a // indirect
+	github.com/unidoc/unitype v0.5.1 // indirect
 	go.etcd.io/bbolt v1.4.0 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
+	golang.org/x/crypto v0.54.0 // indirect
+	golang.org/x/image v0.44.0 // indirect
+	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
 	modernc.org/libc v1.75.7 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
+	rsc.io/pdf v0.1.1 // indirect
 )
