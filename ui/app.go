@@ -8,7 +8,7 @@ import (
 )
 
 type App struct {
-	mw         *walk.MainWindow
+	mw         **walk.MainWindow
 	folderPath string
 	modelPath  string
 	results    *walk.ListBox
@@ -20,9 +20,12 @@ func NewApp() *App {
 }
 
 func (a *App) Run() error {
-	if _, err := (MainWindow{
+	mw := new(walk.MainWindow)
+
+	if err := (MainWindow{
 		Title:    "Semantic Search",
 		MinSize:  Size{800, 600},
+		AssignTo: &mw,
 		Layout:   VBox{},
 		Children: []Widget{
 			Label{Text: "Semantic Search"},
@@ -33,8 +36,9 @@ func (a *App) Run() error {
 					dlg := new(walk.FileDialog)
 					dlg.Title = "Select GGUF Model"
 					dlg.Filter = "GGUF Files|*.gguf"
-					if ok, err := dlg.ShowOpen(a.mw); err == nil && ok {
+					if ok, err := dlg.ShowOpen(mw); err == nil && ok {
 						a.modelPath = dlg.FilePath
+						log.Printf("Selected model: %s", a.modelPath)
 					}
 				},
 			},
@@ -44,8 +48,9 @@ func (a *App) Run() error {
 				OnClicked: func() {
 					dlg := new(walk.FileDialog)
 					dlg.Title = "Select Folder"
-					if ok, err := dlg.ShowBrowseFolder(a.mw); err == nil && ok {
+					if ok, err := dlg.ShowBrowseFolder(mw); err == nil && ok {
 						a.folderPath = dlg.FilePath
+						log.Printf("Selected folder: %s", a.folderPath)
 					}
 				},
 			},
@@ -59,9 +64,14 @@ func (a *App) Run() error {
 				AssignTo: &a.results,
 			},
 		},
-	}.Run()); err != nil {
-		log.Fatal(err)
+	}.Create()); err != nil {
+		log.Printf("Error creating window: %v", err)
 		return err
 	}
+
+	a.mw = &mw
+	log.Println("Application started successfully")
+
+	mw.Run()
 	return nil
 }
