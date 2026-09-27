@@ -245,6 +245,7 @@ func main() {
 		// Also try MatchAll for debugging
 		
 		search := bleve.NewSearchRequestOptions(q, 10, 0, true)
+		search.Fields = []string{"title", "content", "path"} // Request stored fields
 		
 		log.Printf("Executing search...")
 		result, err := idx.Search(search)
