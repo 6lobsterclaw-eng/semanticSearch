@@ -1,12 +1,13 @@
 package indexer
 
 import (
+	"bytes"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/blevesearch/bleve/v2"
-	"github.com/ledongthuc/pdf"
 )
 
 func IndexFolder(idx bleve.Index, dirPath string) (int, error) {
@@ -88,78 +89,30 @@ func indexFile(idx bleve.Index, path string) error {
 func extractPDF(path string) ([]byte, error) {
 	log.Printf("Extracting PDF: %s", path)
 	
-	// First try regular open
-	f, r, err := pdf.Open(path)
-	if err == nil {
-		// Success - normal PDF
-		defer f.Close()
-		return extractTextFromReader(r)
-	}
+	// Try pdftotext - handles encrypted PDFs well
+	// -layout preserves formatting
+	// -enc UTF-8 ensures proper encoding
+	cmd := exec.Command("pdftotext", "-layout", "-enc", "UTF-8", path, "-")
 	
-	// If regular open fails, try with encrypted reader using empty password
-	// This should work for PDFs that are encrypted for "change" but allow reading
-	log.Printf("Regular open failed, trying encrypted reader with empty password: %v", err)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 	
-	file, err := os.Open(path)
+	err := cmd.Run()
 	if err != nil {
-		log.Printf("Error opening file: %v", err)
-		return nil, err
-	}
-	defer file.Close()
-	
-	stat, err := file.Stat()
-	if err != nil {
-		return nil, err
-	}
-	
-	// Try with empty password - callback returns "" to try empty password
-	pw := func() string { return "" }
-	reader, err := pdf.NewReaderEncrypted(file, stat.Size(), pw)
-	if err != nil {
-		log.Printf("Encrypted reader failed: %v", err)
-		return nil, err
-	}
-	
-	// Create wrapper to match the Reader interface
-	wrapper := &pdfReaderWrapper{reader}
-	return extractTextFromReader(wrapper)
-}
-
-type pdfReaderWrapper struct {
-	r *pdf.Reader
-}
-
-func (w *pdfReaderWrapper) NumPage() int {
-	return w.r.NumPage()
-}
-
-func (w *pdfReaderWrapper) Page(num int) pdf.Page {
-	return w.r.Page(num)
-}
-
-func extractTextFromReader(r interface{ NumPage() int; Page(int) pdf.Page }) ([]byte, error) {
-	var text []byte
-	numPages := r.NumPage()
-	log.Printf("PDF has %d pages", numPages)
-	
-	for i := 1; i <= numPages; i++ {
-		page := r.Page(i)
-		if page.V.IsNull() {
-			continue
+		log.Printf("pdftotext error: %v", err)
+		if stderr.Len() > 0 {
+			log.Printf("pdftotext stderr: %s", stderr.String())
 		}
-		txt, err := page.GetPlainText(nil)
-		if err != nil {
-			continue
-		}
-		text = append(text, []byte(txt)...)
-		text = append(text, '\n')
+		return nil, err
 	}
 	
-	if len(text) == 0 {
-		log.Printf("No text extracted from PDF")
+	content := stdout.Bytes()
+	if len(content) == 0 {
+		log.Printf("pdftotext returned empty content")
 		return nil, nil
 	}
 	
-	log.Printf("Extracted %d bytes from PDF", len(text))
-	return text, nil
+	log.Printf("Extracted %d bytes from PDF using pdftotext", len(content))
+	return content, nil
 }
