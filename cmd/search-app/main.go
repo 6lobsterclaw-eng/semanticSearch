@@ -209,15 +209,23 @@ func main() {
 		log.Printf("Index has %d documents", docCount)
 
 		// Simple BM25 search
+		log.Printf("Creating QueryStringQuery for: %s", query)
 		q := bleve.NewQueryStringQuery(query)
+		log.Printf("Query created: %+v", q)
+		
 		search := bleve.NewSearchRequestOptions(q, 10, 0, true)
-
+		search.Highlight = nil // disable highlight to simplify
+		
+		log.Printf("Executing search...")
 		result, err := idx.Search(search)
 		if err != nil {
 			log.Printf("Search error: %v", err)
 			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
 			return
 		}
+
+		log.Printf("Search result: Took=%v, Total=%d, MaxScore=%f", 
+			result.Took, result.Total, result.MaxScore)
 
 		log.Printf("Search returned %d hits", len(result.Hits))
 
@@ -245,6 +253,8 @@ func main() {
 		
 		allQuery := bleve.NewMatchAllQuery()
 		allSearch := bleve.NewSearchRequestOptions(allQuery, 100, 0, false)
+		allSearch.Fields = []string{"*"} // Get all fields
+		
 		allResults, err := idx.Search(allSearch)
 		if err != nil {
 			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
@@ -257,6 +267,7 @@ func main() {
 				"id":    hit.ID,
 				"score": hit.Score,
 			}
+			log.Printf("Doc %s fields: %+v", hit.ID, hit.Fields)
 			for k, v := range hit.Fields {
 				doc[k] = v
 			}
