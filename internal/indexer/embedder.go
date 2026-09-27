@@ -3,24 +3,31 @@ package indexer
 import (
 	"context"
 	"errors"
+	"os"
 
 	"github.com/kelindar/search"
-	"github.com/rostamlabs/rembed"
+	"github.com/kelindar/search/llama"
 )
 
 var ErrEmbedderInit = errors.New("failed to initialize embedder")
 
-// Embedder generates embeddings using rembed and indexes with kelindar/search
+// Embedder generates embeddings using kelindar/search/llama (GGUF models)
 type Embedder struct {
-	model *rembed.Embedder
+	model *llama.Vectorizer
 	index *search.Index[string]
-	dim  int
+	dim   int
 }
 
-// NewEmbedder creates a new local embedder using rembed + kelindar/search
-func NewEmbedder() (*Embedder, error) {
-	// Load model from HuggingFace (auto-downloads)
-	model, err := rembed.Load("sentence-transformers/all-MiniLM-L6-v2")
+// NewEmbedder creates a new local embedder using GGUF model
+// modelPath: path to GGUF model file (e.g., "./model/embedding-model.gguf")
+func NewEmbedder(modelPath string) (*Embedder, error) {
+	// Check if model file exists
+	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
+		return nil, errors.Join(ErrEmbedderInit, errors.New("model file not found: "+modelPath))
+	}
+
+	// Load GGUF model (0 = CPU only, no GPU needed)
+	model, err := llama.New(modelPath, 0)
 	if err != nil {
 		return nil, errors.Join(ErrEmbedderInit, err)
 	}
@@ -28,17 +35,17 @@ func NewEmbedder() (*Embedder, error) {
 	return &Embedder{
 		model: model,
 		index: search.NewIndex[string](),
-		dim:   model.Dim(),
+		dim:   384, // Standard dimension for embedding models
 	}, nil
 }
 
 // Embed generates a vector for the given text
 func (e *Embedder) Embed(text string) (search.Vector, error) {
-	vecs, err := e.model.Embed(context.Background(), []string{text})
+	vec, err := e.model.EmbedText(context.Background(), text)
 	if err != nil {
 		return nil, err
 	}
-	return vecs[0], nil
+	return vec, nil
 }
 
 // AddDocument adds a document to the embedder's index
@@ -64,4 +71,12 @@ func (e *Embedder) LoadIndex(path string) error {
 // Dim returns the embedding dimension
 func (e *Embedder) Dim() int {
 	return e.dim
+}
+
+// Close releases resources
+func (e *Embedder) Close() error {
+	if e.model != nil {
+		e.model.Close()
+	}
+	return nil
 }

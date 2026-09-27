@@ -22,8 +22,8 @@ type Searcher struct {
 	embedder *indexer.Embedder
 }
 
-func NewSearcher(db *storage.DB) (*Searcher, error) {
-	emb, err := indexer.NewEmbedder()
+func NewSearcher(db *storage.DB, modelPath string) (*Searcher, error) {
+	emb, err := indexer.NewEmbedder(modelPath)
 	if err != nil {
 		return nil, err
 	}

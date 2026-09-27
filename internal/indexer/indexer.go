@@ -17,8 +17,8 @@ type Indexer struct {
 	embedder *Embedder
 }
 
-func NewIndexer(db *storage.DB) (*Indexer, error) {
-	emb, err := NewEmbedder()
+func NewIndexer(db *storage.DB, modelPath string) (*Indexer, error) {
+	emb, err := NewEmbedder(modelPath)
 	if err != nil {
 		return nil, err
 	}

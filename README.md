@@ -4,24 +4,33 @@ A desktop application for semantic search of PDF and Markdown files.
 
 ## Features
 
-- **Local embeddings** - Uses rembed for offline embedding generation (no API needed)
+- **Fully offline** - Uses local GGUF model for embeddings (no API, no internet needed after download)
 - **Vector search** - Powered by kelindar/search
-- **Desktop UI** - Native GUI using Fyne
+- **Desktop UI** - Native Windows GUI using Walk
 
 ## Tech Stack
 
 - **Go** - Language
-- **rembed** - Local embedding (pure Go, no CGO)
+- **kelindar/search/llama** - Local GGUF embeddings
 - **kelindar/search** - Vector index
-- **Fyne** - Desktop UI
+- **walk** - Native Windows GUI
 - **SQLite** - Document storage
+
+## GGUF Model
+
+You need to download a GGUF embedding model. Recommended:
+
+- **[BX其次-ai/MiniLM-L6-gguf](https://huggingface.co/BX次ai/MiniLM-L6-gguf)** - Small, fast
+- Or search HuggingFace for "embedding gguf" models
+
+Place the `.gguf` file in a folder, e.g., `model/`.
 
 ## Build
 
 ### Prerequisites
 
 - Go 1.21+
-- Windows 10/11
+- Windows 10/11 with MinGW-w64
 
 ### Build Commands
 
@@ -30,7 +39,7 @@ A desktop application for semantic search of PDF and Markdown files.
 go mod tidy
 
 # Build for Windows
-go build -o search.exe ./cmd/search-app/
+GOOS=windows GOARCH=amd64 CGO_ENABLED=1 go build -o search.exe ./cmd/search-app/
 
 # Or use Makefile
 make build
@@ -39,9 +48,10 @@ make build
 ## Usage
 
 1. Run `search.exe`
-2. Click "Select Folder" to choose a directory with PDF/MD files
-3. Type a query in the search box
-4. Results show with relevance scores
+2. Click "Select Model" to choose your GGUF model file
+3. Click "Select Folder" to choose a directory with PDF/MD files
+4. Type a query in the search box
+5. Results show with relevance scores
 
 ## Development
 
@@ -49,7 +59,7 @@ make build
 # Run tests
 go test ./...
 
-# Run locally
+# Run locally (Windows only)
 go run ./cmd/search-app/
 ```
 
@@ -57,4 +67,4 @@ go run ./cmd/search-app/
 
 - `internal/indexer/` - Text extraction (PDF, MD)
 - `internal/search/` - Search logic
-- `ui/` - Fyne desktop UI
+- `ui/` - Walk desktop UI
