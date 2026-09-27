@@ -45,7 +45,8 @@ func Init(modelPath, libPath string) error {
 		return fmt.Errorf("failed to create embedder: %w", err)
 	}
 
-	dim = 384 // Default, will be auto-detected
+	// Get actual dimension from embedder
+	dim = embedder.EmbedDimension()
 	chunks = make([]Chunk, 0)
 
 	log.Printf("Semantic search initialized with dimension: %d", dim)
