@@ -2,83 +2,66 @@ package indexer
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"os"
 
-	"github.com/go-resty/resty/v2"
+	"github.com/kelindar/search"
+	"github.com/rostamlabs/rembed"
 )
 
-var ErrEmbedFailed = errors.New("embedding generation failed")
+var ErrEmbedderInit = errors.New("failed to initialize embedder")
 
+// Embedder generates embeddings using rembed and indexes with kelindar/search
 type Embedder struct {
-	apiURL  string
-	apiKey  string
-	model   string
-	useLocal bool
+	model *rembed.Embedder
+	index *search.Index[string]
+	dim  int
 }
 
-type Embedding []float32
+// NewEmbedder creates a new local embedder using rembed + kelindar/search
+func NewEmbedder() (*Embedder, error) {
+	// Load model from HuggingFace (auto-downloads)
+	model, err := rembed.Load("sentence-transformers/all-MiniLM-L6-v2")
+	if err != nil {
+		return nil, errors.Join(ErrEmbedderInit, err)
+	}
 
-type EmbeddingResponse struct {
-	Data []struct {
-		Embedding []float64 `json:"embedding"`
-	} `json:"data"`
-}
-
-func NewEmbedder() *Embedder {
-	apiKey := os.Getenv("EMBEDDING_API_KEY")
 	return &Embedder{
-		apiURL:  "https://api.openai.com/v1/embeddings",
-		apiKey:  apiKey,
-		model:   "text-embedding-3-small",
-		useLocal: apiKey == "",
-	}
+		model: model,
+		index: search.NewIndex[string](),
+		dim:   model.Dim(),
+	}, nil
 }
 
-func (e *Embedder) Embed(ctx context.Context, text string) (Embedding, error) {
-	if e.useLocal {
-		return e.embedLocal(ctx, text)
-	}
-	return e.embedAPI(ctx, text)
-}
-
-func (e *Embedder) embedAPI(ctx context.Context, text string) (Embedding, error) {
-	req := map[string]interface{}{
-		"input": text,
-		"model": e.model,
-	}
-
-	resp, err := resty.New().R().
-		SetContext(ctx).
-		SetHeader("Authorization", "Bearer "+e.apiKey).
-		SetHeader("Content-Type", "application/json").
-		SetBody(req).
-		Post(e.apiURL)
-
+// Embed generates a vector for the given text
+func (e *Embedder) Embed(text string) (search.Vector, error) {
+	vecs, err := e.model.Embed(context.Background(), []string{text})
 	if err != nil {
 		return nil, err
 	}
-
-	var result EmbeddingResponse
-	if err := json.Unmarshal(resp.Body(), &result); err != nil {
-		return nil, err
-	}
-
-	if len(result.Data) == 0 {
-		return nil, ErrEmbedFailed
-	}
-
-	// Convert []float64 to []float32
-	emb := make(Embedding, len(result.Data[0].Embedding))
-	for i, v := range result.Data[0].Embedding {
-		emb[i] = float32(v)
-	}
-	return emb, nil
+	return vecs[0], nil
 }
 
-func (e *Embedder) embedLocal(ctx context.Context, text string) (Embedding, error) {
-	// Fallback: return zero vector for offline mode
-	// TODO: Add local ONNX model support
-	return make(Embedding, 384), nil
+// AddDocument adds a document to the embedder's index
+func (e *Embedder) AddDocument(id string, vec search.Vector, content string) {
+	e.index.Add(vec, content)
+}
+
+// Search searches the index
+func (e *Embedder) Search(query search.Vector, k int) []search.Result[string] {
+	return e.index.Search(query, k)
+}
+
+// SaveIndex saves the index to a file
+func (e *Embedder) SaveIndex(path string) error {
+	return e.index.WriteFile(path)
+}
+
+// LoadIndex loads the index from a file
+func (e *Embedder) LoadIndex(path string) error {
+	return e.index.ReadFile(path)
+}
+
+// Dim returns the embedding dimension
+func (e *Embedder) Dim() int {
+	return e.dim
 }

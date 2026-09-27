@@ -34,7 +34,11 @@ func main() {
 			fmt.Println("Usage: search index <directory>")
 			os.Exit(1)
 		}
-		idx := indexer.NewIndexer(db)
+		idx, err := indexer.NewIndexer(db)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to create indexer: %v\n", err)
+			os.Exit(1)
+		}
 		if err := idx.IndexDir(context.Background(), os.Args[2]); err != nil {
 			fmt.Fprintf(os.Stderr, "index failed: %v\n", err)
 			os.Exit(1)
@@ -46,7 +50,11 @@ func main() {
 			fmt.Println("Usage: search search <query>")
 			os.Exit(1)
 		}
-		s := search.NewSearcher(db)
+		s, err := search.NewSearcher(db)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to create searcher: %v\n", err)
+			os.Exit(1)
+		}
 		results, err := s.Search(context.Background(), os.Args[2], 10)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "search failed: %v\n", err)

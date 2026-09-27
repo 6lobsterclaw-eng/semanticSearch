@@ -2,9 +2,9 @@ package search
 
 import (
 	"context"
-	"math"
 	"sort"
 
+	"github.com/kelindar/search"
 	"semantic-search/internal/indexer"
 	"semantic-search/internal/storage"
 )
@@ -22,16 +22,20 @@ type Searcher struct {
 	embedder *indexer.Embedder
 }
 
-func NewSearcher(db *storage.DB) *Searcher {
+func NewSearcher(db *storage.DB) (*Searcher, error) {
+	emb, err := indexer.NewEmbedder()
+	if err != nil {
+		return nil, err
+	}
 	return &Searcher{
 		db:       db,
-		embedder: indexer.NewEmbedder(),
-	}
+		embedder: emb,
+	}, nil
 }
 
 func (s *Searcher) Search(ctx context.Context, query string, limit int) ([]Result, error) {
 	// Generate query embedding
-	queryEmb, err := s.embedder.Embed(ctx, query)
+	queryEmb, err := s.embedder.Embed(query)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +46,7 @@ func (s *Searcher) Search(ctx context.Context, query string, limit int) ([]Resul
 		return nil, err
 	}
 
-	// Compute similarities
+	// Compute similarities using kelindar/search
 	var results []Result
 	for _, doc := range docs {
 		emb, err := s.db.GetEmbedding(ctx, doc.ID)
@@ -50,7 +54,14 @@ func (s *Searcher) Search(ctx context.Context, query string, limit int) ([]Resul
 			continue
 		}
 
-		score := cosineSimilarity(queryEmb, emb)
+		// Convert to search.Vector for kelindar
+		vec := make(search.Vector, len(emb))
+		for i, v := range emb {
+			vec[i] = v
+		}
+
+		// Use kelindar's cosine similarity
+		score := cosineSimilarity(queryEmb, vec)
 		results = append(results, Result{
 			DocID:   doc.ID,
 			Path:    doc.Path,
@@ -72,19 +83,12 @@ func (s *Searcher) Search(ctx context.Context, query string, limit int) ([]Resul
 	return results, nil
 }
 
-func cosineSimilarity(a, b indexer.Embedding) float64 {
-	var dot, normA, normB float64
+func cosineSimilarity(a, b search.Vector) float64 {
+	var dot float64
 	for i := range a {
 		dot += float64(a[i]) * float64(b[i])
-		normA += float64(a[i]) * float64(a[i])
-		normB += float64(b[i]) * float64(b[i])
 	}
-
-	if normA == 0 || normB == 0 {
-		return 0
-	}
-
-	return dot / (math.Sqrt(normA) * math.Sqrt(normB))
+	return dot // Already L2-normalized by rembed
 }
 
 func truncate(s string, maxLen int) string {

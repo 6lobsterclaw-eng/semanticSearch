@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/kelindar/search"
 	"semantic-search/internal/storage"
 )
 
@@ -16,11 +17,15 @@ type Indexer struct {
 	embedder *Embedder
 }
 
-func NewIndexer(db *storage.DB) *Indexer {
+func NewIndexer(db *storage.DB) (*Indexer, error) {
+	emb, err := NewEmbedder()
+	if err != nil {
+		return nil, err
+	}
 	return &Indexer{
 		db:       db,
-		embedder: NewEmbedder(),
-	}
+		embedder: emb,
+	}, nil
 }
 
 func (idx *Indexer) IndexDir(ctx context.Context, dirPath string) error {
@@ -86,10 +91,31 @@ func (idx *Indexer) indexFile(ctx context.Context, path string) error {
 	}
 
 	// Generate embedding
-	emb, err := idx.embedder.Embed(ctx, content)
+	vec, err := idx.embedder.Embed(content)
 	if err != nil {
 		return err
 	}
 
-	return idx.db.InsertEmbedding(ctx, doc.ID, emb)
+	// Add to kelindar search index
+	idx.embedder.AddDocument(doc.ID, vec, doc.Title)
+
+	// Store embedding in DB
+	return idx.db.InsertEmbedding(ctx, doc.ID, vec)
+}
+
+func (idx *Indexer) SaveIndex(path string) error {
+	return idx.embedder.SaveIndex(path)
+}
+
+func (idx *Indexer) LoadIndex(path string) error {
+	return idx.embedder.LoadIndex(path)
+}
+
+// Search searches indexed documents using kelindar/search
+func (idx *Indexer) Search(query string, k int) []search.Result[string] {
+	vec, err := idx.embedder.Embed(query)
+	if err != nil {
+		return nil
+	}
+	return idx.embedder.Search(vec, k)
 }
