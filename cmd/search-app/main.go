@@ -77,6 +77,7 @@ func main() {
         <h3>Step 3: Search</h3>
         <input type="text" id="query" placeholder="Enter search query">
         <button onclick="doSearch()">Search</button>
+        <button onclick="dumpIndex()">Dump Index</button>
     </div>
     
     <div id="results"></div>
@@ -113,6 +114,7 @@ func main() {
             fetch('/search?q=' + encodeURIComponent(query))
                 .then(r => r.json())
                 .then(d => {
+                    console.log('Search result:', d);
                     if(d.error) {
                         document.getElementById('results').innerHTML = '<div class="error">Error: ' + d.error + '</div>';
                         return;
@@ -126,6 +128,28 @@ func main() {
                         html += '<div class="result"><strong>' + r.title + '</strong><br>' +
                                 '<span class="score">Score: ' + r.score.toFixed(4) + '</span><br>' +
                                 '<small>' + r.path + '</small></div>';
+                    });
+                    document.getElementById('results').innerHTML = html;
+                });
+        }
+        
+        function dumpIndex() {
+            document.getElementById('results').innerHTML = '<div class="info">Dumping index...</div>';
+            fetch('/debug/dump')
+                .then(r => r.json())
+                .then(d => {
+                    console.log('Dump result:', d);
+                    if(d.error) {
+                        document.getElementById('results').innerHTML = '<div class="error">Error: ' + d.error + '</div>';
+                        return;
+                    }
+                    var html = '<h3>Indexed Documents: ' + d.count + '</h3>';
+                    d.documents.forEach(function(doc) {
+                        html += '<div class="result"><strong>' + doc.id + '</strong><br>' +
+                                '<small>Title: ' + (doc.title || 'N/A') + '</small><br>' +
+                                '<small>Content length: ' + (doc.content ? doc.content.length : 0) + ' chars</small><br>' +
+                                '<pre style="max-height:100px;overflow:scroll;background:#f5f5f5;padding:5px;">' + 
+                                (doc.content ? doc.content.substring(0, 500) + '...' : 'No content') + '</pre></div>';
                     });
                     document.getElementById('results').innerHTML = html;
                 });
@@ -184,26 +208,18 @@ func main() {
 		docCount, _ := idx.DocCount()
 		log.Printf("Index has %d documents", docCount)
 
-		// List all indexed documents
-		allQuery := bleve.NewMatchAllQuery()
-		allSearch := bleve.NewSearchRequestOptions(allQuery, 100, 0, false)
-		allResults, err := idx.Search(allSearch)
-		if err == nil {
-			log.Printf("All indexed docs: %d hits", len(allResults.Hits))
-			for _, hit := range allResults.Hits {
-				log.Printf("  - ID: %s", hit.ID)
-			}
-		}
-
 		// Simple BM25 search
 		q := bleve.NewQueryStringQuery(query)
 		search := bleve.NewSearchRequestOptions(q, 10, 0, true)
 
 		result, err := idx.Search(search)
 		if err != nil {
+			log.Printf("Search error: %v", err)
 			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
 			return
 		}
+
+		log.Printf("Search returned %d hits", len(result.Hits))
 
 		var results []SearchResult
 		for _, hit := range result.Hits {
@@ -220,11 +236,38 @@ func main() {
 			})
 		}
 
-		json.NewEncoder(w).Encode(map[string]interface{}{"results": results})
+		json.NewEncoder(w).Encode(map[string]interface{}{"results": results, "total": len(results)})
+	})
+
+	// Debug: dump all indexed content
+	http.HandleFunc("/debug/dump", func(w http.ResponseWriter, r *http.Request) {
+		log.Println("Dumping index contents...")
+		
+		allQuery := bleve.NewMatchAllQuery()
+		allSearch := bleve.NewSearchRequestOptions(allQuery, 100, 0, false)
+		allResults, err := idx.Search(allSearch)
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
+			return
+		}
+		
+		var docs []map[string]interface{}
+		for _, hit := range allResults.Hits {
+			doc := map[string]interface{}{
+				"id":    hit.ID,
+				"score": hit.Score,
+			}
+			for k, v := range hit.Fields {
+				doc[k] = v
+			}
+			docs = append(docs, doc)
+		}
+		
+		log.Printf("Dumped %d documents", len(docs))
+		json.NewEncoder(w).Encode(map[string]interface{}{"documents": docs, "count": len(docs)})
 	})
 
 	addr := ":8080"
-	log.Printf("Open browser: http://localhost%s", addr)
 	log.Println("Press Ctrl+C to stop")
 
 	url := "http://localhost" + addr
