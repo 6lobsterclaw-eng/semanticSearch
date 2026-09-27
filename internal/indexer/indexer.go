@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/blevesearch/bleve/v2"
 	"github.com/ledongthuc/pdf"
@@ -69,11 +70,12 @@ func indexFile(idx bleve.Index, path string) error {
 
 	if err != nil {
 		log.Printf("Error reading %s: %v", path, err)
-		return err
+		return err // Skip failed files
 	}
 
 	if len(content) == 0 {
-		log.Printf("Empty content: %s", path)
+		log.Printf("Skipping empty file: %s", path)
+		return nil // Skip empty files
 	}
 
 	// Use file path as unique key
@@ -91,6 +93,11 @@ func extractPDF(path string) ([]byte, error) {
 	
 	f, r, err := pdf.Open(path)
 	if err != nil {
+		// Check if it's an encrypted PDF
+		if strings.Contains(err.Error(), "encryption") || strings.Contains(err.Error(), "encrypted") {
+			log.Printf("Skipping encrypted PDF: %s", path)
+			return []byte{}, nil // Return empty, don't fail
+		}
 		log.Printf("Error opening PDF %s: %v", path, err)
 		return nil, err
 	}
