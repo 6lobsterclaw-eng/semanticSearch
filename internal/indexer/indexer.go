@@ -4,7 +4,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/blevesearch/bleve/v2"
 	"github.com/ledongthuc/pdf"
@@ -13,7 +12,6 @@ import (
 func IndexFolder(idx bleve.Index, dirPath string) (int, error) {
 	log.Printf("Indexing directory: %s", dirPath)
 
-	// Check if directory exists
 	if _, err := os.Stat(dirPath); os.IsNotExist(err) {
 		log.Printf("Directory does not exist: %s", dirPath)
 		return 0, err
@@ -23,7 +21,7 @@ func IndexFolder(idx bleve.Index, dirPath string) (int, error) {
 	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			log.Printf("Walk error on %s: %v", path, err)
-			return nil // Continue walking
+			return nil
 		}
 
 		if info.IsDir() {
@@ -41,7 +39,7 @@ func IndexFolder(idx bleve.Index, dirPath string) (int, error) {
 
 		if err := indexFile(idx, path); err != nil {
 			log.Printf("Error indexing %s: %v", path, err)
-			return nil // Continue on error
+			return nil
 		}
 
 		count++
@@ -70,15 +68,14 @@ func indexFile(idx bleve.Index, path string) error {
 
 	if err != nil {
 		log.Printf("Error reading %s: %v", path, err)
-		return err // Skip failed files
+		return err
 	}
 
 	if len(content) == 0 {
 		log.Printf("Skipping empty file: %s", path)
-		return nil // Skip empty files
+		return nil
 	}
 
-	// Use file path as unique key
 	doc := map[string]string{
 		"title":   filepath.Base(path),
 		"content": string(content),
@@ -91,36 +88,44 @@ func indexFile(idx bleve.Index, path string) error {
 func extractPDF(path string) ([]byte, error) {
 	log.Printf("Extracting PDF: %s", path)
 	
+	// Try to open PDF
 	f, r, err := pdf.Open(path)
 	if err != nil {
-		// Check if it's an encrypted PDF
-		if strings.Contains(err.Error(), "encryption") || strings.Contains(err.Error(), "encrypted") {
-			log.Printf("Skipping encrypted PDF: %s", path)
-			return []byte{}, nil // Return empty, don't fail
-		}
-		log.Printf("Error opening PDF %s: %v", path, err)
-		return nil, err
+		// Log the error but continue
+		log.Printf("PDF open error: %v", err)
+		
+		// Try to read anyway - some PDFs can still be read even with encryption warning
+		// The library might have opened it partially
 	}
-	defer f.Close()
-
-	var text []byte
-	numPages := r.NumPage()
-	log.Printf("PDF has %d pages", numPages)
 	
-	for i := 1; i <= numPages; i++ {
-		p := r.Page(i)
-		if p.V.IsNull() {
-			continue
+	// Even if there's an error, try to read if we got a valid reader
+	if r != nil {
+		defer f.Close()
+		
+		var text []byte
+		numPages := r.NumPage()
+		log.Printf("PDF has %d pages", numPages)
+		
+		for i := 1; i <= numPages; i++ {
+			p := r.Page(i)
+			if p.V.IsNull() {
+				continue
+			}
+			txt, err := p.GetPlainText(nil)
+			if err != nil {
+				continue
+			}
+			text = append(text, []byte(txt)...)
+			text = append(text, '\n')
 		}
-		txt, err := p.GetPlainText(nil)
-		if err != nil {
-			log.Printf("Error extracting text from page %d: %v", i, err)
-			continue
+		
+		if len(text) > 0 {
+			log.Printf("Extracted %d bytes from PDF", len(text))
+			return text, nil
 		}
-		text = append(text, []byte(txt)...)
-		text = append(text, '\n')
 	}
-
-	log.Printf("Extracted %d bytes from PDF", len(text))
-	return text, nil
+	
+	// If we get here, the PDF couldn't be read properly
+	// Return error so it's logged
+	return nil, err
 }
