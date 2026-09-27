@@ -26,9 +26,38 @@ type SearchResult struct {
 func main() {
 	log.Println("Starting Semantic Search (BM25)...")
 
-	// Create default in-memory index with default mapping
+	// Create index with proper mapping
+	mapping := bleve.NewIndexMapping()
+	
+	// Define document mapping - specify which fields to index
+	docMapping := bleve.NewDocumentMapping()
+	
+	// Title field - indexed, stored
+	titleField := bleve.NewTextFieldMapping()
+	titleField.Index = true
+	titleField.Store = true
+	docMapping.AddFieldMappingsAt("title", titleField)
+	
+	// Content field - indexed, stored (this is the main searchable field)
+	contentField := bleve.NewTextFieldMapping()
+	contentField.Index = true
+	contentField.Store = true
+	docMapping.AddFieldMappingsAt("content", contentField)
+	
+	// Path field - stored but not indexed
+	pathField := bleve.NewTextFieldMapping()
+	pathField.Index = false
+	pathField.Store = true
+	docMapping.AddFieldMappingsAt("path", pathField)
+	
+	mapping.DefaultMapping = docMapping
+	
+	// Also set default field options
+	mapping.DefaultType = "text"
+	mapping.DefaultAnalyzer = "standard"
+	
 	var err error
-	idx, err = bleve.NewMemOnly(bleve.NewIndexMapping())
+	idx, err = bleve.NewMemOnly(mapping)
 	if err != nil {
 		log.Fatalf("Failed to create index: %v", err)
 	}
