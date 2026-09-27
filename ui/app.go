@@ -16,6 +16,8 @@ type App struct {
 }
 
 func NewApp() *App {
+	// Initialize walk library
+	walk.Init()
 	return &App{}
 }
 
