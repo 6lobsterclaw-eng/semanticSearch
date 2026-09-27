@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/blevesearch/bleve/v2"
 	"github.com/ledongthuc/pdf"
@@ -71,10 +72,23 @@ func indexFile(idx bleve.Index, path string) error {
 		return err
 	}
 
+	log.Printf("=== INDEXING DEBUG ===")
+	log.Printf("File: %s", path)
+	log.Printf("Extracted content length: %d bytes", len(content))
+	
 	if len(content) == 0 {
-		log.Printf("Skipping empty file: %s", path)
+		log.Printf("WARNING: Empty content - skipping")
+		log.Printf("=======================")
 		return nil
 	}
+
+	// Show first 500 chars
+	preview := string(content)
+	if len(preview) > 500 {
+		preview = preview[:500]
+	}
+	log.Printf("Content preview:\n%s", preview)
+	log.Printf("=======================")
 
 	doc := map[string]string{
 		"title":   filepath.Base(path),
@@ -82,51 +96,79 @@ func indexFile(idx bleve.Index, path string) error {
 		"path":    path,
 	}
 
-	log.Printf("Indexing document: %s (content length: %d)", path, len(content))
-	return idx.Index(path, doc)
+	log.Printf("Calling idx.Index(%s, doc)", path)
+	if err := idx.Index(path, doc); err != nil {
+		log.Printf("idx.Index error: %v", err)
+		return err
+	}
+	log.Printf("Indexing complete for: %s", path)
+	
+	return nil
 }
 
 func extractPDF(path string) ([]byte, error) {
-	log.Printf("Extracting PDF: %s", path)
+	log.Printf("=== PDF EXTRACTION DEBUG ===")
+	log.Printf("Opening PDF: %s", path)
 	
 	// Try to open PDF
 	f, r, err := pdf.Open(path)
 	if err != nil {
-		log.Printf("PDF open error: %v", err)
+		log.Printf("ERROR: PDF open failed: %v", err)
+		log.Printf("============================")
 		return nil, err
 	}
 	defer f.Close()
 	
-	var text []byte
+	log.Printf("PDF opened successfully")
+	
 	numPages := r.NumPage()
 	log.Printf("PDF has %d pages", numPages)
+	
+	var allText []string
+	var totalChars int
 	
 	for i := 1; i <= numPages; i++ {
 		p := r.Page(i)
 		if p.V.IsNull() {
+			log.Printf("Page %d: V is null, skipping", i)
 			continue
 		}
+		
 		txt, err := p.GetPlainText(nil)
 		if err != nil {
+			log.Printf("Page %d: GetPlainText error: %v", i, err)
 			continue
 		}
-		text = append(text, []byte(txt)...)
-		text = append(text, '\n')
+		
+		trimmed := strings.TrimSpace(txt)
+		pageChars := len(trimmed)
+		totalChars += pageChars
+		
+		if pageChars > 0 {
+			log.Printf("Page %d: extracted %d chars", i, pageChars)
+			// Show first 100 chars of each non-empty page
+			preview := trimmed
+			if len(preview) > 100 {
+				preview = preview[:100]
+			}
+			log.Printf("  Preview: %s...", preview)
+			allText = append(allText, trimmed)
+		} else {
+			log.Printf("Page %d: no text", i)
+		}
 	}
 	
-	if len(text) == 0 {
-		log.Printf("No text extracted from PDF")
+	log.Printf("Total extracted: %d chars from %d pages", totalChars, len(allText))
+	
+	if totalChars == 0 {
+		log.Printf("WARNING: No text extracted from PDF!")
+		log.Printf("============================")
 		return nil, nil
 	}
 	
-	log.Printf("Extracted %d bytes from PDF", len(text))
+	result := []byte(strings.Join(allText, "\n\n"))
+	log.Printf("Final result: %d bytes", len(result))
+	log.Printf("============================")
 	
-	// Log first 200 chars for debugging
-	preview := string(text)
-	if len(preview) > 200 {
-		preview = preview[:200]
-	}
-	log.Printf("Content preview: %s", preview)
-	
-	return text, nil
+	return result, nil
 }
