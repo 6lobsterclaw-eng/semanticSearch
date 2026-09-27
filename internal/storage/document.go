@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"math"
 
 	_ "modernc.org/sqlite"
 )
@@ -54,4 +55,54 @@ func (db *DB) InsertDocument(ctx context.Context, doc Document) error {
 
 func (db *DB) Close() error {
 	return db.conn.Close()
+}
+
+func (db *DB) InsertEmbedding(ctx context.Context, docID string, emb []float32) error {
+	// Serialize float32 to bytes
+	data := make([]byte, len(emb)*4)
+	for i, v := range emb {
+		bits := math.Float32bits(v)
+		data[i*4] = byte(bits)
+		data[i*4+1] = byte(bits >> 8)
+		data[i*4+2] = byte(bits >> 16)
+		data[i*4+3] = byte(bits >> 24)
+	}
+
+	_, err := db.conn.ExecContext(ctx,
+		`INSERT OR REPLACE INTO embeddings (doc_id, vector) VALUES (?, ?)`,
+		docID, data)
+	return err
+}
+
+func (db *DB) GetAllDocuments(ctx context.Context) ([]Document, error) {
+	rows, err := db.conn.QueryContext(ctx, "SELECT id, path, content, title, indexed_at FROM documents")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var docs []Document
+	for rows.Next() {
+		var doc Document
+		if err := rows.Scan(&doc.ID, &doc.Path, &doc.Content, &doc.Title, &doc.IndexedAt); err != nil {
+			continue
+		}
+		docs = append(docs, doc)
+	}
+	return docs, nil
+}
+
+func (db *DB) GetEmbedding(ctx context.Context, docID string) ([]float32, error) {
+	var data []byte
+	err := db.conn.QueryRowContext(ctx, "SELECT vector FROM embeddings WHERE doc_id = ?", docID).Scan(&data)
+	if err != nil {
+		return nil, err
+	}
+
+	emb := make([]float32, len(data)/4)
+	for i := 0; i < len(emb); i++ {
+		bits := uint32(data[i*4]) | uint32(data[i*4+1])<<8 | uint32(data[i*4+2])<<16 | uint32(data[i*4+3])<<24
+		emb[i] = math.Float32frombits(bits)
+	}
+	return emb, nil
 }
