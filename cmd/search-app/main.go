@@ -211,11 +211,11 @@ func main() {
 		fmt.Fprint(w, html)
 	})
 
-	// Set model path endpoint - DISABLED
+	// Set model path endpoint - shows BM25 mode (semantic disabled)
 	http.HandleFunc("/setModel", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false, 
-			"error": "Semantic search temporarily disabled - using BM25 mode",
+			"success": false,
+			"error": "Semantic search disabled - using BM25 mode (works fully offline)",
 		})
 	})
 

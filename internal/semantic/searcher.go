@@ -36,11 +36,11 @@ type Result struct {
 }
 
 // Init initializes the semantic search with an embedding model
-func Init(modelPath string) error {
+func Init(modelPath, libPath string) error {
 	log.Printf("Initializing semantic search with model: %s", modelPath)
 
 	var err error
-	embedder, err = embed.NewEmbedder(modelPath)
+	embedder, err = embed.NewEmbedder(modelPath, libPath)
 	if err != nil {
 		return fmt.Errorf("failed to create embedder: %w", err)
 	}
