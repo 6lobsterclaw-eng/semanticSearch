@@ -12,7 +12,10 @@ import (
 	"semantic-search/internal/indexer"
 )
 
-var idx bleve.Index
+var (
+	idx       bleve.Index
+	modelPath string
+)
 
 type SearchResult struct {
 	Path  string  `json:"path"`
@@ -49,20 +52,29 @@ func main() {
         .success { background: #d4edda; color: #155724; }
         .error { background: #f8d7da; color: #721c24; }
         .info { background: #d1ecf1; color: #0c5460; }
+        .note { color: #666; font-size: 12px; }
     </style>
 </head>
 <body>
     <h1>Semantic Search (BM25)</h1>
     
     <div class="step">
-        <h3>Step 1: Select Folder to Index</h3>
+        <h3>Step 1: (Optional) GGUF Model for Semantic Search</h3>
+        <input type="text" id="modelPath" placeholder="C:\path\to\model.gguf">
+        <button onclick="setModel()">Set Model</button>
+        <div id="modelStatus"></div>
+        <p class="note">Note: BM25 doesn't need a model. This is for future semantic search (AI embeddings).</p>
+    </div>
+    
+    <div class="step">
+        <h3>Step 2: Select Folder to Index</h3>
         <input type="text" id="folderPath" placeholder="C:\path\to\documents">
         <button onclick="indexFolder()">Index Folder</button>
         <div id="indexStatus"></div>
     </div>
     
     <div class="step">
-        <h3>Step 2: Search</h3>
+        <h3>Step 3: Search</h3>
         <input type="text" id="query" placeholder="Enter search query">
         <button onclick="doSearch()">Search</button>
     </div>
@@ -70,6 +82,18 @@ func main() {
     <div id="results"></div>
 
     <script>
+        function setModel() {
+            var path = document.getElementById('modelPath').value;
+            if(!path) { alert('Please enter model path'); return; }
+            document.getElementById('modelStatus').innerHTML = '<div class="info">Setting model path...</div>';
+            fetch('/setModel?path=' + encodeURIComponent(path))
+                .then(r => r.json())
+                .then(d => {
+                    if(d.success) document.getElementById('modelStatus').innerHTML = '<div class="success">Model path saved!</div>';
+                    else document.getElementById('modelStatus').innerHTML = '<div class="error">Error: ' + d.error + '</div>';
+                });
+        }
+        
         function indexFolder() {
             var path = document.getElementById('folderPath').value;
             if(!path) { alert('Please enter folder path'); return; }
@@ -114,6 +138,19 @@ func main() {
 		fmt.Fprint(w, html)
 	})
 
+	// Set model path endpoint
+	http.HandleFunc("/setModel", func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Query().Get("path")
+		if path == "" {
+			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "no path"})
+			return
+		}
+		modelPath = path
+		log.Printf("Model path set to: %s", path)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+	})
+
+	// Index folder endpoint
 	http.HandleFunc("/index", func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Query().Get("path")
 		if path == "" {
@@ -133,6 +170,7 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "count": count})
 	})
 
+	// Search endpoint
 	http.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query().Get("q")
 		if query == "" {
@@ -142,7 +180,7 @@ func main() {
 
 		log.Printf("Searching for: %s", query)
 
-		// Simple search
+		// Simple BM25 search
 		q := bleve.NewQueryStringQuery(query)
 		search := bleve.NewSearchRequestOptions(q, 10, 0, true)
 
