@@ -44,8 +44,13 @@ func NewApp() *App {
 	}
 }
 
-// scanAndPopulate scans exe folder and populates UI
+// scanAndPopulate scans exe folder and populates UI (call AFTER UI is created)
 func (a *App) scanAndPopulate() {
+	// Check if widgets are ready
+	if a.statusLabel == nil || a.modelCombo == nil || a.serverBtn == nil {
+		return
+	}
+
 	exeDir, err := detect.FindExeFolder()
 	if err != nil {
 		a.statusLabel.SetText("Status: Error - Cannot find exe folder")
