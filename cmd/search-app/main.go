@@ -287,12 +287,13 @@ func main() {
 			return
 		}
 
-		count, err := idx.IndexFolder(path)
+		err := idx.IndexFolder(path)
 		if err != nil {
 			fmt.Fprintf(w, `{"success": false, "error": "%v"}`, err)
 			return
 		}
 
+		count := idx.DocumentCount()
 		fmt.Fprintf(w, `{"success": true, "count": %d}`, count)
 	})
 
