@@ -46,16 +46,24 @@ func NewApp() *App {
 
 // scanAndPopulate scans exe folder and populates UI (call AFTER UI is created)
 func (a *App) scanAndPopulate() {
+	log.Println("scanAndPopulate called")
+	
 	// Check if widgets are ready
 	if a.statusLabel == nil || a.modelCombo == nil || a.serverBtn == nil {
+		log.Println("Widgets not ready yet, skipping scan")
 		return
 	}
 
+	log.Println("Widgets ready, scanning...")
+	
 	exeDir, err := detect.FindExeFolder()
 	if err != nil {
+		log.Printf("FindExeFolder error: %v", err)
 		a.statusLabel.SetText("Status: Error - Cannot find exe folder")
 		return
 	}
+
+	log.Printf("Exe folder: %s", exeDir)
 
 	serverPath, err := detect.FindLlamaServer(exeDir)
 	if err != nil {
@@ -126,6 +134,7 @@ func (a *App) startServer() {
 
 func (a *App) Run() error {
 	var statusText string = "Status: Scanning for llama-server.exe and GGUF files..."
+	log.Println("Run() started")
 
 	if _, err := (MainWindow{
 		Title:    "Semantic Search",
@@ -133,6 +142,7 @@ func (a *App) Run() error {
 		Layout:   VBox{},
 		OnKeyPress: func(key walk.Key) {
 			if key == walk.KeyF5 {
+				log.Println("F5 pressed")
 				a.scanAndPopulate()
 			}
 		},
