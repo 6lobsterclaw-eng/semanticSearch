@@ -218,11 +218,18 @@ func main() {
 
 	// Auto-detect endpoint
 	http.HandleFunc("/detect", func(w http.ResponseWriter, r *http.Request) {
-		exeDir, _ := detect.FindExeFolder()
+		exeDir, err := detect.FindExeFolder()
+		log.Printf("detect: exeDir=%s, err=%v", exeDir, err)
+		if err != nil {
+			fmt.Fprintf(w, `{"server": false, "gguf": [], "error": "%v"}`, err)
+			return
+		}
+		
 		server, _ := detect.FindLlamaServer(exeDir)
 		gguf, _ := detect.FindGGUFFiles(exeDir)
+		log.Printf("detect: server=%s, gguf=%v", server, gguf)
 		
-		fmt.Fprintf(w, `{"server": %v, "gguf": %v}`, server != "", gguf)
+		fmt.Fprintf(w, `{"server": %v, "gguf": %v, "exeDir": %v}`, server != "", gguf, exeDir)
 	})
 
 	// Start server endpoint
@@ -324,7 +331,7 @@ func main() {
 		fmt.Fprintf(w, `{"results": %v}`, out)
 	})
 
-	addr := ":8080"
+	addr := ":8081"
 	log.Println("Server starting on", addr)
 	openBrowser("http://localhost" + addr)
 	http.ListenAndServe(addr, nil)
