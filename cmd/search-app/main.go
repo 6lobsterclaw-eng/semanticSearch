@@ -222,10 +222,12 @@ func main() {
 
 	// Auto-detect endpoint
 	http.HandleFunc("/detect", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		
 		exeDir, err := detect.FindExeFolder()
 		log.Printf("detect: exeDir=%s, err=%v", exeDir, err)
 		if err != nil {
-			fmt.Fprintf(w, `{"server": false, "gguf": [], "error": "%v"}`, err)
+			fmt.Fprintf(w, `{"server": false, "gguf": [], "error": %q}`, err)
 			return
 		}
 		
@@ -233,7 +235,15 @@ func main() {
 		gguf, _ := detect.FindGGUFFiles(exeDir)
 		log.Printf("detect: server=%s, gguf=%v", server, gguf)
 		
-		fmt.Fprintf(w, `{"server": %v, "gguf": %v, "exeDir": %v}`, server != "", gguf, exeDir)
+		// Build JSON manually to avoid formatting issues
+		fmt.Fprintf(w, `{"server": %v, "gguf": [`, server != "")
+		for i, f := range gguf {
+			if i > 0 {
+				fmt.Fprintf(w, ",")
+			}
+			fmt.Fprintf(w, "%q", f)
+		}
+		fmt.Fprintf(w, `], "exeDir": %q}`, exeDir)
 	})
 
 	// Start server endpoint
