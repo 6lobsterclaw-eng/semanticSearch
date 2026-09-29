@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"runtime"
 	"sync"
+	"time"
 
 	"semantic-search/internal/detect"
 	"semantic-search/internal/indexer"
@@ -160,10 +161,26 @@ func main() {
                 .then(r => r.json())
                 .then(d => {
                     if (d.success) {
-                        serverRunning = true;
-                        document.getElementById('serverInfo').innerHTML = '<div class="success">Server running on port ' + d.port + '</div>';
+                        // Poll for status
+                        pollServerStatus();
                     } else {
                         document.getElementById('serverInfo').innerHTML = '<div class="error">Error: ' + d.error + '</div>';
+                    }
+                });
+        }
+        
+        function pollServerStatus() {
+            fetch('/serverStatus')
+                .then(r => r.json())
+                .then(d => {
+                    document.getElementById('serverInfo').innerHTML = '<div class="info">' + d.message + '</div>';
+                    if (d.status === 'ready') {
+                        serverRunning = true;
+                        document.getElementById('serverInfo').innerHTML = '<div class="success">Server ready!</div>';
+                    } else if (d.status === 'error') {
+                        document.getElementById('serverInfo').innerHTML = '<div class="error">Error: ' + d.message + '</div>';
+                    } else if (d.status === 'starting') {
+                        setTimeout(pollServerStatus, 1000);
                     }
                 });
         }
@@ -246,11 +263,19 @@ func main() {
 		fmt.Fprintf(w, `], "exeDir": %q}`, exeDir)
 	})
 
-	// Start server endpoint
+	var serverStatus string = "idle" // idle, starting, ready, error
+	var serverStatusMsg string = ""
+
+	// Start server endpoint - starts async and returns immediately
 	http.HandleFunc("/startServer", func(w http.ResponseWriter, r *http.Request) {
 		model := r.URL.Query().Get("model")
 		if model == "" {
 			fmt.Fprint(w, `{"success": false, "error": "no model selected"}`)
+			return
+		}
+
+		if serverStatus == "starting" {
+			fmt.Fprint(w, `{"success": false, "error": "already starting"}`)
 			return
 		}
 
@@ -263,36 +288,56 @@ func main() {
 
 		log.Printf("Starting server: %s -m %s --port %d", serverPath, modelPath, port)
 
-		serverCmd = exec.Command(serverPath, "-m", modelPath, "--port", fmt.Sprintf("%d", port))
-		serverCmd.Stdout = log.Writer()
-		serverCmd.Stderr = log.Writer()
+		serverStatus = "starting"
+		serverStatusMsg = "Starting llama-server..."
 
-		if err := serverCmd.Start(); err != nil {
-			fmt.Fprintf(w, `{"success": false, "error": "%v"}`, err)
-			return
-		}
+		// Start server in background
+		go func() {
+			serverCmd = exec.Command(serverPath, "-m", modelPath, "--port", fmt.Sprintf("%d", port), "-c", "2048")
+			serverCmd.Stdout = log.Writer()
+			serverCmd.Stderr = log.Writer()
 
-		// Wait for server to be ready
-		for i := 0; i < 30; i++ {
-			if resp, err := http.Get(serverURL + "/health"); err == nil {
-				resp.Body.Close()
-				if resp.StatusCode == 200 {
-					// Create embedder
-					emb, err := indexer.NewHTTPEmbedder(serverURL, modelPath)
-					if err != nil {
-						fmt.Fprintf(w, `{"success": false, "error": "embedder: %v"}`, err)
+			if err := serverCmd.Start(); err != nil {
+				serverStatus = "error"
+				serverStatusMsg = fmt.Sprintf("Failed to start: %v", err)
+				log.Printf("Server start error: %v", err)
+				return
+			}
+
+			// Wait for server to be ready
+			for i := 0; i < 60; i++ {
+				serverStatusMsg = fmt.Sprintf("Loading model... (%ds)", i)
+				if resp, err := http.Get(serverURL + "/v1/models"); err == nil {
+					resp.Body.Close()
+					if resp.StatusCode == 200 {
+						// Create embedder
+						emb, err := indexer.NewHTTPEmbedder(serverURL, modelPath)
+						if err != nil {
+							serverStatus = "error"
+							serverStatusMsg = fmt.Sprintf("Embedder error: %v", err)
+							return
+						}
+						embedder = emb
+						idx = indexer.NewIndexer(emb)
+						serverStatus = "ready"
+						serverStatusMsg = "Server ready!"
+						log.Println("Server ready")
 						return
 					}
-					embedder = emb
-					idx = indexer.NewIndexer(emb)
-
-					fmt.Fprintf(w, `{"success": true, "port": %d}`, port)
-					return
 				}
+				time.Sleep(1 * time.Second)
 			}
-		}
 
-		fmt.Fprint(w, `{"success": false, "error": "timeout"}`)
+			serverStatus = "error"
+			serverStatusMsg = "Timeout waiting for server"
+		}()
+
+		fmt.Fprint(w, `{"success": true, "status": "starting"}`)
+	})
+
+	// Server status endpoint - poll this for progress
+	http.HandleFunc("/serverStatus", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"status": %q, "message": %q}`, serverStatus, serverStatusMsg)
 	})
 
 	// Index folder endpoint
