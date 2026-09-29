@@ -121,8 +121,12 @@ func main() {
         // Auto-detect on load
         window.onload = function() {
             fetch('/detect')
-                .then(r => r.json())
+                .then(r => {
+                    console.log('detect response:', r);
+                    return r.json();
+                })
                 .then(d => {
+                    console.log('detect data:', d);
                     var status = '';
                     if (d.server) {
                         status += 'llama-server.exe: FOUND ';
@@ -333,7 +337,7 @@ func main() {
 
 	addr := ":8081"
 	log.Println("Server starting on", addr)
-	openBrowser("http://localhost" + addr)
+	openBrowser("http://localhost:8081")
 	http.ListenAndServe(addr, nil)
 }
 
