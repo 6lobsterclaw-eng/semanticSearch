@@ -13,8 +13,6 @@ import (
 )
 
 var errEmbedderInit = errors.New("failed to initialize HTTP embedder")
-
-// HTTPEmbedder generates embeddings via llama-server HTTP API
 type HTTPEmbedder struct {
 	serverURL string
 	modelPath string
@@ -28,7 +26,7 @@ type HTTPEmbedder struct {
 // modelPath: path to GGUF model file (for display/info only)
 func NewHTTPEmbedder(serverURL, modelPath string) (*HTTPEmbedder, error) {
 	if serverURL == "" {
-		return nil, errors.Join(ErrEmbedderInit, errors.New("server URL is required"))
+		return nil, errors.Join(errEmbedderInit, errors.New("server URL is required"))
 	}
 
 	return &HTTPEmbedder{
@@ -121,25 +119,6 @@ func (e *HTTPEmbedder) Dim() int {
 func (e *HTTPEmbedder) Close() error {
 	e.client.CloseIdleConnections()
 	return nil
-}
-
-// GetAllDocuments returns all documents in the index for export
-func (e *HTTPEmbedder) GetAllDocuments() []IndexedDocument {
-	docs := e.index.GetAll()
-	var result []IndexedDocument
-	for _, doc := range docs {
-		result = append(result, IndexedDocument{
-			ID:      doc.ID,
-			Content: doc.Content,
-		})
-	}
-	return result
-}
-
-// IndexedDocument represents a document in the index
-type IndexedDocument struct {
-	ID      string
-	Content string
 }
 
 // IsServerReady checks if llama-server is responding

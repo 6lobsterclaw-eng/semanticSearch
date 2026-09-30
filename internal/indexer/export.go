@@ -2,6 +2,7 @@ package indexer
 
 import (
 	"encoding/gob"
+	"log"
 	"os"
 	"time"
 )
