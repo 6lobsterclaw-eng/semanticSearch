@@ -324,7 +324,10 @@ func main() {
             var indexed = 0;
             var errors = [];
             
+            console.log("Starting indexing, files:", JSON.stringify(filesToIndex));
+            
             function indexNext() {
+                console.log("indexNext called, indexed=", indexed, "length=", filesToIndex.length);
                 if (indexed >= filesToIndex.length) {
                     if (errors.length > 0) {
                         document.getElementById('indexStatus').innerHTML = '<div class="error">Indexed with errors: ' + errors.join(', ') + '</div>';
@@ -335,9 +338,14 @@ func main() {
                 }
                 
                 var file = filesToIndex[indexed];
+                console.log("Indexing file:", file.path);
                 fetch('/index?path=' + encodeURIComponent(file.path))
-                    .then(function(r) { return r.json(); })
+                    .then(function(r) { 
+                        console.log("Response status:", r.status);
+                        return r.json(); 
+                    })
                     .then(function(d) {
+                        console.log("Response data:", JSON.stringify(d));
                         if (d.success) {
                             indexed++;
                         } else {
@@ -346,6 +354,7 @@ func main() {
                         indexNext();
                     })
                     .catch(function(e) {
+                        console.error("Fetch error:", e);
                         errors.push(file.path.split(/[/\\]/).pop());
                         indexNext();
                     });
