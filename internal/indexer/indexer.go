@@ -27,7 +27,8 @@ type Indexer struct {
 	}
 	// Store chunks with embeddings for export
 	storedChunks []Chunk
-	docCount     int
+	docCount     int // total chunks
+	fileCount    int // number of files indexed
 }
 
 // NewIndexer creates a new indexer with the given embedder
@@ -133,7 +134,10 @@ func (idx *Indexer) indexFile(path string) error {
 			Embedding: vec,
 		})
 	}
-
+	
+	// Increment file count after successful indexing
+	idx.fileCount++
+	
 	return nil
 }
 
@@ -276,6 +280,11 @@ func (idx *Indexer) LoadIndex(path string) error {
 // DocumentCount returns the number of indexed documents
 func (idx *Indexer) DocumentCount() int {
 	return idx.docCount
+}
+
+// FileCount returns the number of indexed files
+func (idx *Indexer) FileCount() int {
+	return idx.fileCount
 }
 
 // Search searches indexed documents

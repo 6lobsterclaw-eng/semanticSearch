@@ -368,7 +368,12 @@ func main() {
                     if (errors.length > 0) {
                         document.getElementById('indexStatus').innerHTML = '<div class="error">Indexed with errors: ' + errors.join(', ') + '</div>';
                     } else {
-                        document.getElementById('indexStatus').innerHTML = '<div class="success">Indexed ' + indexed + ' files!</div>';
+                        // Fetch actual counts from server
+                        fetch('/documentCount')
+                            .then(function(r) { return r.json(); })
+                            .then(function(c) {
+                                document.getElementById('indexStatus').innerHTML = '<div class="success">Indexed ' + c.files + ' document' + (c.files !== 1 ? 's' : '') + ' (' + c.count + ')</div>';
+                            });
                     }
                     return;
                 }
@@ -591,6 +596,15 @@ func main() {
 		fmt.Fprintf(w, `{"status": %q, "message": %q}`, serverStatus, serverStatusMsg)
 	})
 
+	// Document count endpoint
+	http.HandleFunc("/documentCount", func(w http.ResponseWriter, r *http.Request) {
+		if idx == nil {
+			fmt.Fprintf(w, `{"count": 0, "files": 0}`)
+			return
+		}
+		fmt.Fprintf(w, `{"count": %d, "files": %d}`, idx.DocumentCount(), idx.FileCount())
+	})
+
 	// Index folder endpoint
 	http.HandleFunc("/index", func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Query().Get("path")
@@ -613,7 +627,8 @@ func main() {
 		}
 
 		count := idx.DocumentCount()
-		fmt.Fprintf(w, `{"success": true, "count": %d}`, count)
+		files := idx.FileCount()
+		fmt.Fprintf(w, `{"success": true, "count": %d, "files": %d}`, count, files)
 	})
 
 	// Search endpoint
