@@ -31,23 +31,6 @@ func ExtractMarkdown(path string) (string, error) {
 	return text, nil
 }
 
-func stripHTML(s string) string {
-	result := ""
-	inTag := false
-	for _, c := range s {
-		if c == '<' {
-			inTag = true
-		} else if c == '>' {
-			inTag = false
-		} else if !inTag {
-			result += string(c)
-		}
-	}
-	// Clean up whitespace
-	result = strings.Join(strings.Fields(result), " ")
-	return result
-}
-
 // ExtractTitle returns the first heading or filename as title
 func ExtractTitle(path string) string {
 	data, err := os.ReadFile(path)

@@ -12,7 +12,7 @@ import (
 	"github.com/kelindar/search"
 )
 
-var ErrEmbedderInit = errors.New("failed to initialize HTTP embedder")
+var errEmbedderInit = errors.New("failed to initialize HTTP embedder")
 
 // HTTPEmbedder generates embeddings via llama-server HTTP API
 type HTTPEmbedder struct {
@@ -121,6 +121,25 @@ func (e *HTTPEmbedder) Dim() int {
 func (e *HTTPEmbedder) Close() error {
 	e.client.CloseIdleConnections()
 	return nil
+}
+
+// GetAllDocuments returns all documents in the index for export
+func (e *HTTPEmbedder) GetAllDocuments() []IndexedDocument {
+	docs := e.index.GetAll()
+	var result []IndexedDocument
+	for _, doc := range docs {
+		result = append(result, IndexedDocument{
+			ID:      doc.ID,
+			Content: doc.Content,
+		})
+	}
+	return result
+}
+
+// IndexedDocument represents a document in the index
+type IndexedDocument struct {
+	ID      string
+	Content string
 }
 
 // IsServerReady checks if llama-server is responding

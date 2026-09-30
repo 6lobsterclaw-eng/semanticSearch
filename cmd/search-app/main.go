@@ -82,6 +82,40 @@ func main() {
         input[type="text"] { padding: 8px; border: 1px solid #ddd; border-radius: 3px; }
         select { padding: 8px; border: 1px solid #ddd; border-radius: 3px; }
         .auto-detect { background: #fff3cd; padding: 10px; border-radius: 3px; margin-bottom: 15px; }
+        .drop-zone { 
+            border: 2px dashed #aaa; 
+            padding: 30px; 
+            text-align: center; 
+            background: #fafafa;
+            border-radius: 5px;
+            margin: 10px 0;
+            transition: background 0.2s, border-color 0.2s;
+        }
+        .drop-zone.dragover { 
+            border-color: #007bff; 
+            background: #e7f1ff; 
+        }
+        .file-list { 
+            max-height: 200px; 
+            overflow-y: auto; 
+            border: 1px solid #ddd; 
+            border-radius: 3px;
+            margin: 10px 0;
+        }
+        .file-item { 
+            padding: 8px 12px; 
+            border-bottom: 1px solid #eee; 
+            display: flex; 
+            align-items: center;
+        }
+        .file-item:last-child { border-bottom: none; }
+        .file-item input[type="checkbox"] { margin-right: 10px; }
+        .file-item .remove { 
+            margin-left: auto; 
+            color: #dc3545; 
+            cursor: pointer; 
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -101,9 +135,17 @@ func main() {
     </div>
     
     <div class="step">
-        <h3>Step 2: Select Folder</h3>
-        <input type="text" id="folderPath" placeholder="C:\path\to\documents" style="width: 400px;">
-        <button onclick="indexFolder()">Index Folder</button>
+        <h3>Step 2: Index Files</h3>
+        <div id="dropZone" class="drop-zone" ondrop="handleDrop(event)" ondragover="handleDragOver(event)" ondragenter="handleDragEnter(event)" ondragleave="handleDragLeave(event)">
+            Drag & drop files or folders here<br>
+            <small>PDF, MD, TXT, DOC, INDEX</small>
+        </div>
+        <div id="fileList" class="file-list"></div>
+        <div>
+            <button onclick="indexFiles()">Index Selected</button>
+            <button onclick="exportIndex()">Export Index</button>
+            <button onclick="importIndex()">Import Index</button>
+        </div>
         <div id="indexStatus"></div>
     </div>
     
@@ -185,22 +227,172 @@ func main() {
                 });
         }
         
-        function indexFolder() {
-            var path = document.getElementById('folderPath').value;
-            if (!path) { alert('Please enter folder path'); return; }
+        // File handling for Step 2
+        var pendingFiles = [];
+        
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        
+        function handleDragEnter(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.getElementById('dropZone').classList.add('dragover');
+        }
+        
+        function handleDragLeave(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.getElementById('dropZone').classList.remove('dragover');
+        }
+        
+        function handleDrop(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.getElementById('dropZone').classList.remove('dragover');
+            
+            var items = e.dataTransfer.files;
+            if (items.length > 0) {
+                for (var i = 0; i < items.length; i++) {
+                    addFile(items[i].path || items[i].name);
+                }
+            }
+        }
+        
+        function addFile(path) {
+            // Check for duplicates
+            for (var i = 0; i < pendingFiles.length; i++) {
+                if (pendingFiles[i].path === path) return;
+            }
+            
+            var ext = path.split('.').pop().toLowerCase();
+            var isIndex = ext === 'index' || path.endsWith('.index');
+            
+            pendingFiles.push({ path: path, isIndex: isIndex, checked: true });
+            renderFileList();
+        }
+        
+        function removeFile(index) {
+            pendingFiles.splice(index, 1);
+            renderFileList();
+        }
+        
+        function toggleFile(index) {
+            pendingFiles[index].checked = !pendingFiles[index].checked;
+        }
+        
+        function renderFileList() {
+            var container = document.getElementById('fileList');
+            if (pendingFiles.length === 0) {
+                container.innerHTML = '';
+                return;
+            }
+            
+            var html = '';
+            for (var i = 0; i < pendingFiles.length; i++) {
+                var f = pendingFiles[i];
+                var ext = f.path.split('.').pop().toLowerCase();
+                var icon = f.isIndex ? '📦' : (ext === 'pdf' ? '📄' : (ext === 'md' ? '📝' : (ext === 'txt' ? '📃' : '📁')));
+                html += '<div class="file-item">';
+                html += '<input type="checkbox" ' + (f.checked ? 'checked' : '') + ' onchange="toggleFile(' + i + ')">';
+                html += '<span>' + icon + ' ' + f.path.split(/[/\\]/).pop() + '</span>';
+                html += '<span class="remove" onclick="removeFile(' + i + ')">✕</span>';
+                html += '</div>';
+            }
+            container.innerHTML = html;
+        }
+        
+        function indexFiles() {
             if (!serverRunning) { alert('Please start server first'); return; }
             
-            document.getElementById('indexStatus').innerHTML = '<div class="info">Indexing...</div>';
-            fetch('/index?path=' + encodeURIComponent(path))
-                .then(r => r.json())
-                .then(d => {
+            // Check if any .index files were dropped - import instead
+            var indexFiles = pendingFiles.filter(function(f) { return f.isIndex && f.checked; });
+            if (indexFiles.length > 0) {
+                // Import the first .index file
+                importIndexFile(indexFiles[0].path);
+                return;
+            }
+            
+            // Regular indexing
+            var filesToIndex = pendingFiles.filter(function(f) { return f.checked && !f.isIndex; });
+            if (filesToIndex.length === 0) { alert('Please select files to index'); return; }
+            
+            document.getElementById('indexStatus').innerHTML = '<div class="info">Indexing ' + filesToIndex.length + ' files...</div>';
+            
+            // Index each file sequentially
+            var indexed = 0;
+            var errors = [];
+            
+            function indexNext() {
+                if (indexed >= filesToIndex.length) {
+                    if (errors.length > 0) {
+                        document.getElementById('indexStatus').innerHTML = '<div class="error">Indexed with errors: ' + errors.join(', ') + '</div>';
+                    } else {
+                        document.getElementById('indexStatus').innerHTML = '<div class="success">Indexed ' + indexed + ' files!</div>';
+                    }
+                    return;
+                }
+                
+                var file = filesToIndex[indexed];
+                fetch('/index?path=' + encodeURIComponent(file.path))
+                    .then(function(r) { return r.json(); })
+                    .then(function(d) {
+                        if (d.success) {
+                            indexed++;
+                        } else {
+                            errors.push(file.path.split(/[/\\]/).pop());
+                        }
+                        indexNext();
+                    })
+                    .catch(function(e) {
+                        errors.push(file.path.split(/[/\\]/).pop());
+                        indexNext();
+                    });
+            }
+            
+            indexNext();
+        }
+        
+        function importIndexFile(path) {
+            document.getElementById('indexStatus').innerHTML = '<div class="info">Importing index...</div>';
+            fetch('/import?path=' + encodeURIComponent(path))
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
                     if (d.success) {
                         indexed = true;
-                        document.getElementById('indexStatus').innerHTML = '<div class="success">Indexed ' + d.count + ' documents!</div>';
+                        document.getElementById('indexStatus').innerHTML = '<div class="success">Imported ' + d.count + ' chunks!</div>';
                     } else {
                         document.getElementById('indexStatus').innerHTML = '<div class="error">Error: ' + d.error + '</div>';
                     }
                 });
+        }
+        
+        function exportIndex() {
+            if (!indexed) { alert('Nothing to export'); return; }
+            
+            var path = prompt('Enter path to save index file:', 'index.idx');
+            if (!path) return;
+            
+            document.getElementById('indexStatus').innerHTML = '<div class="info">Exporting index...</div>';
+            fetch('/export?path=' + encodeURIComponent(path))
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    if (d.success) {
+                        document.getElementById('indexStatus').innerHTML = '<div class="success">Exported ' + d.count + ' chunks!</div>';
+                    } else {
+                        document.getElementById('indexStatus').innerHTML = '<div class="error">Error: ' + d.error + '</div>';
+                    }
+                });
+        }
+        
+        function importIndex() {
+            if (!serverRunning) { alert('Please start server first'); return; }
+            
+            var path = prompt('Enter path to index file:');
+            if (!path) return;
+            
+            importIndexFile(path);
         }
         
         function doSearch() {
@@ -353,7 +545,9 @@ func main() {
 			return
 		}
 
-		err := idx.IndexFolder(path)
+		err := idx.IndexFolder(path, func(done, total int) {
+			log.Printf("Indexing progress: %d/%d", done, total)
+		})
 		if err != nil {
 			fmt.Fprintf(w, `{"success": false, "error": "%v"}`, err)
 			return
@@ -387,11 +581,52 @@ func main() {
 			})
 		}
 
-		fmt.Fprintf(w, `{"results": %v}`, out)
+		data, _ := json.Marshal(out)
+		fmt.Fprint(w, string(data))
+	})
+
+	// Export index endpoint
+	http.HandleFunc("/export", func(w http.ResponseWriter, r *http.Request) {
+		if idx == nil {
+			fmt.Fprint(w, `{"success": false, "error": "no index"}`)
+			return
+		}
+
+		path := r.URL.Query().Get("path")
+		if path == "" {
+			fmt.Fprint(w, `{"success": false, "error": "no path"}`)
+			return
+		}
+
+		err := idx.Export(path)
+		if err != nil {
+			fmt.Fprintf(w, `{"success": false, "error": "%v"}`, err)
+			return
+		}
+
+		count := idx.ChunkCount()
+		fmt.Fprintf(w, `{"success": true, "count": %d}`, count)
+	})
+
+	// Import index endpoint
+	http.HandleFunc("/import", func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Query().Get("path")
+		if path == "" {
+			fmt.Fprint(w, `{"success": false, "error": "no path"}`)
+			return
+		}
+
+		err := idx.Import(path)
+		if err != nil {
+			fmt.Fprintf(w, `{"success": false, "error": "%v"}`, err)
+			return
+		}
+
+		count := idx.ChunkCount()
+		fmt.Fprintf(w, `{"success": true, "count": %d}`, count)
 	})
 
 	addr := ":8081"
-	log.Println("Server starting on", addr)
 	openBrowser("http://localhost:8081")
 	http.ListenAndServe(addr, nil)
 }

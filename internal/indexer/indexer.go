@@ -1,10 +1,17 @@
 package indexer
 
 import (
+	"bytes"
+	"fmt"
+	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
+	"github.com/ledongthuc/pdf"
+	"github.com/gomarkdown/markdown"
+	"github.com/gomarkdown/markdown/parser"
 	"github.com/kelindar/search"
 )
 
@@ -18,6 +25,8 @@ type Indexer struct {
 		SaveIndex(string) error
 		LoadIndex(string) error
 	}
+	// Store chunks with embeddings for export
+	storedChunks []Chunk
 }
 
 // NewIndexer creates a new indexer with the given embedder
@@ -35,7 +44,8 @@ func NewIndexer(embedder interface {
 }
 
 // IndexFolder indexes all PDF and MD files in a directory
-func (idx *Indexer) IndexFolder(dirPath string) error {
+// progressFn is called with (done, total) counts during indexing
+func (idx *Indexer) IndexFolder(dirPath string, progressFn func(done, total int)) error {
 	var files []string
 
 	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
@@ -55,9 +65,13 @@ func (idx *Indexer) IndexFolder(dirPath string) error {
 		return err
 	}
 
-	for _, file := range files {
+	total := len(files)
+	for i, file := range files {
 		if err := idx.indexFile(file); err != nil {
 			continue
+		}
+		if progressFn != nil {
+			progressFn(i+1, total)
 		}
 	}
 
@@ -80,6 +94,8 @@ func (idx *Indexer) indexFile(path string) error {
 		if err == nil {
 			content = string(data)
 		}
+	case ".doc", ".docx":
+		content, err = "", fmt.Errorf("DOC format not yet supported (convert to TXT)")
 	default:
 		return nil
 	}
@@ -91,25 +107,69 @@ func (idx *Indexer) indexFile(path string) error {
 	title := extractTitle(path)
 	docID := filepath.Base(path)
 
-	// Generate embedding
-	vec, err := idx.embedder.Embed(content)
-	if err != nil {
-		return err
-	}
+	// Split content into sentences for better search granularity
+	sentences := splitIntoSentences(content)
+	log.Printf("Indexing %s: split into %d sentences", path, len(sentences))
 
-	// Add to search index
-	idx.embedder.AddDocument(docID, vec, title+" | "+content)
+	// Generate embedding for each sentence and add to index
+	for i, sentence := range sentences {
+		vec, err := idx.embedder.Embed(sentence)
+		if err != nil {
+			log.Printf("Warning: failed to embed sentence from %s: %v", path, err)
+			continue
+		}
+
+		// Add to search index with path as ID
+		chunkID := fmt.Sprintf("%s#%d", docID, i)
+		idx.embedder.AddDocument(chunkID, vec, title+" | "+sentence)
+		
+		// Store chunk for export
+		idx.storedChunks = append(idx.storedChunks, Chunk{
+			ID:        chunkID,
+			Source:    title,
+			Sentence:  sentence,
+			Embedding: vec,
+		})
+	}
 
 	return nil
 }
 
 func extractPDFText(path string) (string, error) {
-	// Simple text extraction - could be enhanced
+	// Use ledongthuc/pdf for proper PDF text extraction
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("read file: %w", err)
 	}
-	return string(data), nil
+
+	// Try to extract using pdf library
+	reader := bytes.NewReader(data)
+	pdfReader, err := pdf.NewReader(reader, int64(len(data)))
+	if err != nil {
+		return "", fmt.Errorf("create reader: %w", err)
+	}
+
+	var text []string
+	numPages := pdfReader.NumPage()
+	for i := 1; i <= numPages; i++ {
+		page := pdfReader.Page(i)
+		if page.V.IsNull() {
+			continue
+		}
+		content, err := page.GetPlainText(nil)
+		if err != nil {
+			continue
+		}
+		if content != "" {
+			text = append(text, content)
+		}
+	}
+
+	if len(text) == 0 {
+		return "", fmt.Errorf("no text extracted")
+	}
+
+	return strings.Join(text, "\n"), nil
 }
 
 func extractMarkdown(path string) (string, error) {
@@ -117,7 +177,12 @@ func extractMarkdown(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return string(data), nil
+
+	// Use gomarkdown to parse and convert to plain text
+	ext := parser.CommonExtensions | parser.Attributes
+	md := parser.NewWithExtensions(ext)
+	html := markdown.ToHTML(data, md, nil)
+	return stripHTML(string(html)), nil
 }
 
 func extractTitle(path string) string {
@@ -127,6 +192,73 @@ func extractTitle(path string) string {
 		return base[:len(base)-len(ext)]
 	}
 	return base
+}
+
+func stripHTML(s string) string {
+	var b strings.Builder
+	in := false
+	for _, c := range s {
+		if c == '<' {
+			in = true
+		} else if c == '>' {
+			in = false
+		} else if !in {
+			b.WriteRune(c)
+		}
+	}
+	return b.String()
+}
+
+// splitIntoSentences splits text into sentences at sentence boundaries
+// Splits on . ! ? followed by space or newline, merges short chunks (<5 chars) with next
+func splitIntoSentences(text string) []string {
+	// Normalize whitespace first
+	text = strings.Join(strings.Fields(text), " ")
+	
+	if len(text) == 0 {
+		return nil
+	}
+	
+	// Split on . ! ? followed by space or end of string
+	re := regexp.MustCompile(`[.!?]+\s*`)
+	parts := re.Split(text, -1)
+	
+	var sentences []string
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if len(trimmed) > 0 {
+			sentences = append(sentences, trimmed)
+		}
+	}
+	
+	if len(sentences) == 0 {
+		return []string{text}
+	}
+	
+	// Merge short sentences with next
+	var result []string
+	var current string
+	for _, s := range sentences {
+		if len(current) == 0 {
+			current = s
+		} else if len(current) < 5 {
+			// Merge with next if current is too short
+			current = current + ". " + s
+		} else {
+			result = append(result, current)
+			current = s
+		}
+	}
+	// Don't forget the last one
+	if len(current) > 0 {
+		result = append(result, current)
+	}
+	
+	if len(result) == 0 && len(text) > 0 {
+		return []string{text}
+	}
+	
+	return result
 }
 
 // SaveIndex saves the index to a file
