@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,7 +12,6 @@ import (
 
 	"semantic-search/internal/detect"
 	"semantic-search/internal/indexer"
-
 	"github.com/kelindar/search"
 )
 
