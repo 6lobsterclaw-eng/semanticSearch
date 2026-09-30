@@ -418,19 +418,35 @@ func main() {
                 });
         }
         
+        var indexingPollInterval = null;
+
         function indexFolderPath(path) {
             document.getElementById('indexStatus').innerHTML = '<div class="info">Indexing folder...</div>';
+            
+            // Start indexing
             fetch('/index?path=' + encodeURIComponent(path))
                 .then(function(r) { return r.json(); })
                 .then(function(d) {
                     if (d.success) {
                         indexed = true;
-                        // Fetch actual counts from server
-                        fetch('/documentCount')
-                            .then(function(r) { return r.json(); })
-                            .then(function(c) {
-                                document.getElementById('indexStatus').innerHTML = '<div class="success">Indexed ' + c.files + ' document' + (c.files !== 1 ? 's' : '') + ' (' + c.count + ')</div>';
-                            });
+                        // Poll for progress
+                        indexingPollInterval = setInterval(function() {
+                            fetch('/serverStatus')
+                                .then(function(r) { return r.json(); })
+                                .then(function(s) {
+                                    if (s.status === 'indexing') {
+                                        document.getElementById('indexStatus').innerHTML = '<div class="info">Indexing ' + s.done + '/' + s.total + ' (' + s.chunks + ' chunks)...</div>';
+                                    } else if (s.status === 'ready' || s.status === 'idle') {
+                                        clearInterval(indexingPollInterval);
+                                        // Fetch final counts
+                                        fetch('/documentCount')
+                                            .then(function(r) { return r.json(); })
+                                            .then(function(c) {
+                                                document.getElementById('indexStatus').innerHTML = '<div class="success">Indexed ' + c.files + ' document' + (c.files !== 1 ? 's' : '') + ' (' + c.count + ')</div>';
+                                            });
+                                    }
+                                });
+                        }, 500);
                     } else {
                         document.getElementById('indexStatus').innerHTML = '<div class="error">Error: ' + d.error + '</div>';
                     }
@@ -526,6 +542,12 @@ func main() {
 
 	var serverStatus string = "idle" // idle, starting, ready, error
 	var serverStatusMsg string = ""
+	var indexingProgress = struct {
+		done   int
+		total  int
+		chunks int
+		active bool
+	}{}
 
 	// Start server endpoint - starts async and returns immediately
 	http.HandleFunc("/startServer", func(w http.ResponseWriter, r *http.Request) {
@@ -590,15 +612,17 @@ func main() {
 			}
 
 			serverStatus = "error"
-			serverStatusMsg = "Timeout waiting for server"
-		}()
-
-		fmt.Fprint(w, `{"success": true, "status": "starting"}`)
-	})
+			fmt.Fprint(w, `{"success": true, "status": "starting"}`)
+		})
 
 	// Server status endpoint - poll this for progress
 	http.HandleFunc("/serverStatus", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, `{"status": %q, "message": %q}`, serverStatus, serverStatusMsg)
+		if indexingProgress.active {
+			fmt.Fprintf(w, `{"status": "indexing", "message": "Indexing %d/%d (%d chunks)", "done": %d, "total": %d, "chunks": %d}`,
+				indexingProgress.done, indexingProgress.total, indexingProgress.chunks, indexingProgress.done, indexingProgress.total, indexingProgress.chunks)
+		} else {
+			fmt.Fprintf(w, `{"status": %q, "message": %q}`, serverStatus, serverStatusMsg)
+		}
 	})
 
 	// Document count endpoint
@@ -623,17 +647,26 @@ func main() {
 			return
 		}
 
-		err := idx.IndexFolder(path, func(done, total int) {
-			log.Printf("Indexing progress: %d/%d", done, total)
-		})
-		if err != nil {
-			fmt.Fprintf(w, `{"success": false, "error": "%v"}`, err)
-			return
-		}
+		// Start indexing in background and return immediately
+		indexingProgress.active = true
+		indexingProgress.done = 0
+		indexingProgress.total = 0
+		indexingProgress.chunks = 0
 
-		count := idx.DocumentCount()
-		files := idx.FileCount()
-		fmt.Fprintf(w, `{"success": true, "count": %d, "files": %d}`, count, files)
+		go func() {
+			err := idx.IndexFolder(path, func(done, total, chunks int) {
+				indexingProgress.done = done
+				indexingProgress.total = total
+				indexingProgress.chunks = chunks
+				log.Printf("Indexing progress: %d/%d (%d chunks)", done, total, chunks)
+			})
+			if err != nil {
+				log.Printf("Indexing error: %v", err)
+			}
+			indexingProgress.active = false
+		}()
+
+		fmt.Fprint(w, `{"success": true, "message": "Indexing started"}`)
 	})
 
 	// Search endpoint

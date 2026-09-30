@@ -46,8 +46,8 @@ func NewIndexer(embedder interface {
 }
 
 // IndexFolder indexes all PDF and MD files in a directory
-// progressFn is called with (done, total) counts during indexing
-func (idx *Indexer) IndexFolder(dirPath string, progressFn func(done, total int)) error {
+// progressFn is called with (done, total, chunks) counts during indexing
+func (idx *Indexer) IndexFolder(dirPath string, progressFn func(done, total, chunks int)) error {
 	var files []string
 
 	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
@@ -69,18 +69,19 @@ func (idx *Indexer) IndexFolder(dirPath string, progressFn func(done, total int)
 
 	total := len(files)
 	for i, file := range files {
-		if err := idx.indexFile(file); err != nil {
+		chunks, err := idx.indexFile(file)
+		if err != nil {
 			continue
 		}
 		if progressFn != nil {
-			progressFn(i+1, total)
+			progressFn(i+1, total, chunks)
 		}
 	}
 
 	return nil
 }
 
-func (idx *Indexer) indexFile(path string) error {
+func (idx *Indexer) indexFile(path string) (int, error) {
 	ext := strings.ToLower(filepath.Ext(path))
 
 	var content string
@@ -99,11 +100,11 @@ func (idx *Indexer) indexFile(path string) error {
 	case ".doc", ".docx":
 		content, err = "", fmt.Errorf("DOC format not yet supported (convert to TXT)")
 	default:
-		return nil
+		return 0, nil
 	}
 
 	if err != nil || content == "" {
-		return err
+		return 0, err
 	}
 
 	title := extractTitle(path)
@@ -125,7 +126,7 @@ func (idx *Indexer) indexFile(path string) error {
 		chunkID := fmt.Sprintf("%s#%d", docID, i)
 		idx.embedder.AddDocument(chunkID, vec, title+" | "+sentence)
 		idx.docCount++
-		
+
 		// Store chunk for export
 		idx.storedChunks = append(idx.storedChunks, Chunk{
 			ID:        chunkID,
@@ -134,11 +135,11 @@ func (idx *Indexer) indexFile(path string) error {
 			Embedding: vec,
 		})
 	}
-	
+
 	// Increment file count after successful indexing
 	idx.fileCount++
-	
-	return nil
+
+	return len(sentences), nil
 }
 
 func extractPDFText(path string) (string, error) {
