@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -42,15 +43,19 @@ func NewHTTPEmbedder(serverURL, modelPath string) (*HTTPEmbedder, error) {
 
 // Embed generates a vector for the given text via HTTP
 func (e *HTTPEmbedder) Embed(text string) (search.Vector, error) {
+	// OpenAI-compatible embedding request format
 	type EmbedRequest struct {
-		Content []string `json:"content"`
+		Input string `json:"input"`
+		Model string `json:"model,omitempty"`
 	}
 
 	type EmbedResponse struct {
-		Embeddings [][]float64 `json:"embeddings"`
+		Data []struct {
+			Embedding []float64 `json:"embedding"`
+		} `json:"data"`
 	}
 
-	reqBody := EmbedRequest{Content: []string{text}}
+	reqBody := EmbedRequest{Input: text}
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {
 		return nil, err
@@ -69,7 +74,9 @@ func (e *HTTPEmbedder) Embed(text string) (search.Vector, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("llama-server returned status %d", resp.StatusCode)
+		// Read body for error details
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("llama-server returned status %d: %s", resp.StatusCode, string(body))
 	}
 
 	var embedResp EmbedResponse
@@ -77,13 +84,13 @@ func (e *HTTPEmbedder) Embed(text string) (search.Vector, error) {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	if len(embedResp.Embeddings) == 0 {
+	if len(embedResp.Data) == 0 {
 		return nil, errors.New("no embeddings returned")
 	}
 
 	// Convert to search.Vector
-	vec := make(search.Vector, len(embedResp.Embeddings[0]))
-	for i, v := range embedResp.Embeddings[0] {
+	vec := make(search.Vector, len(embedResp.Data[0].Embedding))
+	for i, v := range embedResp.Data[0].Embedding {
 		vec[i] = float32(v)
 	}
 
