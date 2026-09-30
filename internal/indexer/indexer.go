@@ -27,6 +27,7 @@ type Indexer struct {
 	}
 	// Store chunks with embeddings for export
 	storedChunks []Chunk
+	docCount     int
 }
 
 // NewIndexer creates a new indexer with the given embedder
@@ -122,6 +123,7 @@ func (idx *Indexer) indexFile(path string) error {
 		// Add to search index with path as ID
 		chunkID := fmt.Sprintf("%s#%d", docID, i)
 		idx.embedder.AddDocument(chunkID, vec, title+" | "+sentence)
+		idx.docCount++
 		
 		// Store chunk for export
 		idx.storedChunks = append(idx.storedChunks, Chunk{
@@ -273,7 +275,7 @@ func (idx *Indexer) LoadIndex(path string) error {
 
 // DocumentCount returns the number of indexed documents
 func (idx *Indexer) DocumentCount() int {
-	return idx.index.Len()
+	return idx.docCount
 }
 
 // Search searches indexed documents
