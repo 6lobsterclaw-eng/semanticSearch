@@ -612,8 +612,11 @@ func main() {
 			}
 
 			serverStatus = "error"
-			fmt.Fprint(w, `{"success": true, "status": "starting"}`)
-		})
+			serverStatusMsg = "Timeout waiting for server"
+		}()
+
+		fmt.Fprint(w, `{"success": true, "status": "starting"}`)
+	})
 
 	// Server status endpoint - poll this for progress
 	http.HandleFunc("/serverStatus", func(w http.ResponseWriter, r *http.Request) {
