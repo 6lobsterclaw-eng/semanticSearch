@@ -544,7 +544,7 @@ func main() {
 
 		// Start server in background
 		go func() {
-			serverCmd = exec.Command(serverPath, "-m", modelPath, "--port", fmt.Sprintf("%d", port), "-c", "2048")
+			serverCmd = exec.Command(serverPath, "-m", modelPath, "--port", fmt.Sprintf("%d", port), "-c", "2048", "--embeddings")
 			serverCmd.Stdout = log.Writer()
 			serverCmd.Stderr = log.Writer()
 
