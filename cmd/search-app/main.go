@@ -425,7 +425,12 @@ func main() {
                 .then(function(d) {
                     if (d.success) {
                         indexed = true;
-                        document.getElementById('indexStatus').innerHTML = '<div class="success">Indexed ' + d.count + ' documents!</div>';
+                        // Fetch actual counts from server
+                        fetch('/documentCount')
+                            .then(function(r) { return r.json(); })
+                            .then(function(c) {
+                                document.getElementById('indexStatus').innerHTML = '<div class="success">Indexed ' + c.files + ' document' + (c.files !== 1 ? 's' : '') + ' (' + c.count + ')</div>';
+                            });
                     } else {
                         document.getElementById('indexStatus').innerHTML = '<div class="error">Error: ' + d.error + '</div>';
                     }
