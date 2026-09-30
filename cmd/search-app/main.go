@@ -136,8 +136,12 @@ func main() {
     
     <div class="step">
         <h3>Step 2: Index Files</h3>
+        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+            <input type="text" id="folderPath" placeholder="C:\path\to\folder" style="width: 400px;">
+            <button onclick="addFolder()">Add Folder</button>
+        </div>
         <div id="dropZone" class="drop-zone" ondrop="handleDrop(event)" ondragover="handleDragOver(event)" ondragenter="handleDragEnter(event)" ondragleave="handleDragLeave(event)">
-            Drag & drop files or folders here<br>
+            Or drag & drop files here<br>
             <small>PDF, MD, TXT, DOC, INDEX</small>
         </div>
         <div id="fileList" class="file-list"></div>
@@ -230,6 +234,12 @@ func main() {
         // File handling for Step 2
         var pendingFiles = [];
         
+        function addFolder() {
+            var path = document.getElementById('folderPath').value;
+            if (!path) { alert('Please enter folder path'); return; }
+            addFile(path);
+        }
+        
         function handleDragOver(e) {
             e.preventDefault();
             e.stopPropagation();
@@ -268,14 +278,20 @@ func main() {
             
             var ext = path.split('.').pop().toLowerCase();
             var isIndex = ext === 'index' || path.endsWith('.index');
+            var isFolder = !path.includes('.') || path.endsWith('\\') || path.endsWith('/');
             
-            pendingFiles.push({ path: path, isIndex: isIndex, checked: true });
+            pendingFiles.push({ path: path, isIndex: isIndex, checked: true, isFolder: isFolder });
             renderFileList();
         }
         
         function removeFile(index) {
             pendingFiles.splice(index, 1);
             renderFileList();
+        }
+        
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.stopPropagation();
         }
         
         function toggleFile(index) {
@@ -293,7 +309,20 @@ func main() {
             for (var i = 0; i < pendingFiles.length; i++) {
                 var f = pendingFiles[i];
                 var ext = f.path.split('.').pop().toLowerCase();
-                var icon = f.isIndex ? '📦' : (ext === 'pdf' ? '📄' : (ext === 'md' ? '📝' : (ext === 'txt' ? '📃' : '📁')));
+                var icon;
+                if (f.isFolder) {
+                    icon = '📁';
+                } else if (f.isIndex) {
+                    icon = '📦';
+                } else if (ext === 'pdf') {
+                    icon = '📄';
+                } else if (ext === 'md') {
+                    icon = '📝';
+                } else if (ext === 'txt') {
+                    icon = '📃';
+                } else {
+                    icon = '📄';
+                }
                 html += '<div class="file-item">';
                 html += '<input type="checkbox" ' + (f.checked ? 'checked' : '') + ' onchange="toggleFile(' + i + ')">';
                 html += '<span>' + icon + ' ' + f.path.split(/[/\\]/).pop() + '</span>';
@@ -314,8 +343,15 @@ func main() {
                 return;
             }
             
+            // Check for folders - index all at once
+            var folders = pendingFiles.filter(function(f) { return f.isFolder && f.checked; });
+            if (folders.length > 0) {
+                indexFolderPath(folders[0].path);
+                return;
+            }
+            
             // Regular indexing
-            var filesToIndex = pendingFiles.filter(function(f) { return f.checked && !f.isIndex; });
+            var filesToIndex = pendingFiles.filter(function(f) { return f.checked && !f.isIndex && !f.isFolder; });
             if (filesToIndex.length === 0) { alert('Please select files to index'); return; }
             
             document.getElementById('indexStatus').innerHTML = '<div class="info">Indexing ' + filesToIndex.length + ' files...</div>';
@@ -371,6 +407,20 @@ func main() {
                     if (d.success) {
                         indexed = true;
                         document.getElementById('indexStatus').innerHTML = '<div class="success">Imported ' + d.count + ' chunks!</div>';
+                    } else {
+                        document.getElementById('indexStatus').innerHTML = '<div class="error">Error: ' + d.error + '</div>';
+                    }
+                });
+        }
+        
+        function indexFolderPath(path) {
+            document.getElementById('indexStatus').innerHTML = '<div class="info">Indexing folder...</div>';
+            fetch('/index?path=' + encodeURIComponent(path))
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    if (d.success) {
+                        indexed = true;
+                        document.getElementById('indexStatus').innerHTML = '<div class="success">Indexed ' + d.count + ' documents!</div>';
                     } else {
                         document.getElementById('indexStatus').innerHTML = '<div class="error">Error: ' + d.error + '</div>';
                     }
