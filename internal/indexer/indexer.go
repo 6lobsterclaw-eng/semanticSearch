@@ -294,13 +294,13 @@ func (idx *Indexer) FileCount() int {
 
 // SearchResult contains enriched search result data
 type SearchResult struct {
-	Index     int     // Display index (1, 2, 3...)
-	ChunkID   string  // Chunk identifier
-	Path      string  // File path
-	Title     string  // Document title
-	Extract   string  // Sentence with keyword bolded
-	Location  string  // "Page X" or "Row X"
-	Score     float64 // Relevance score
+	Index    int     `json:"index"`
+	ChunkID  string  `json:"chunkId"`
+	Path     string  `json:"path"`
+	Title    string  `json:"title"`
+	Extract  string  `json:"extract"`
+	Location string  `json:"location"`
+	Score    float64 `json:"score"`
 }
 
 // Search searches indexed documents and returns enriched results

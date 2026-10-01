@@ -33,13 +33,13 @@ var (
 )
 
 type SearchResult struct {
-	Index     int     `json:"index"`
-	ChunkID   string  `json:"chunkId"`
-	Path      string  `json:"path"`
-	Title     string  `json:"title"`
-	Extract   string  `json:"extract"`
-	Location  string  `json:"location"`
-	Score     float64 `json:"score"`
+	Index    int     `json:"index"`
+	ChunkID  string  `json:"chunkId"`
+	Path     string  `json:"path"`
+	Title    string  `json:"title"`
+	Extract  string  `json:"extract"`
+	Location string  `json:"location"`
+	Score    float64 `json:"score"`
 }
 
 func main() {
