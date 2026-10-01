@@ -46,6 +46,12 @@ type SearchResult struct {
 	Score    float64 `json:"score"`
 }
 
+// JSONEscape escapes a string for safe JSON embedding
+func JSONEscape(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
+}
+
 func main() {
 	log.Println("Starting Semantic Search App...")
 
@@ -182,6 +188,7 @@ func main() {
         <h3>Step 3: Search</h3>
         <input type="text" id="query" placeholder="Enter search query" style="width: 400px;">
         <button onclick="doSearch()">Search</button>
+        <button onclick="refineQuery()">Refine</button>
         <div style="margin-top: 10px;">
             <label style="margin-right: 15px;">
                 <input type="checkbox" id="semanticCheck" checked> Semantic
@@ -600,6 +607,28 @@ func main() {
                     document.getElementById('results').innerHTML = '<div class="error">Error: ' + err + '</div>';
                 });
         }
+
+        function refineQuery() {
+            var query = document.getElementById('query').value;
+            if (!query) { alert('Please enter a query to refine'); return; }
+            if (!llmServerRunning) { alert('Please start LLM server first'); return; }
+
+            document.getElementById('results').innerHTML = '<div class="info">Refining query with LLM...</div>';
+
+            fetch('/refine?q=' + encodeURIComponent(query))
+                .then(function(response) { return response.json(); })
+                .then(function(d) {
+                    if (d.success) {
+                        document.getElementById('query').value = d.refined;
+                        document.getElementById('results').innerHTML = '<div class="success">Query refined! Press Search to find results.</div>';
+                    } else {
+                        document.getElementById('results').innerHTML = '<div class="error">Error: ' + d.error + '</div>';
+                    }
+                })
+                .catch(function(err) {
+                    document.getElementById('results').innerHTML = '<div class="error">Error: ' + err + '</div>';
+                });
+        }
     </script>
 </body>
 </html>`
@@ -900,6 +929,29 @@ func main() {
 
 		count := idx.ChunkCount()
 		fmt.Fprintf(w, `{"success": true, "count": %d}`, count)
+	})
+
+	// Refine query endpoint - uses LLM to improve search query
+	http.HandleFunc("/refine", func(w http.ResponseWriter, r *http.Request) {
+		if llmClient == nil {
+			fmt.Fprint(w, `{"success": false, "error": "LLM server not started"}`)
+			return
+		}
+
+		query := r.URL.Query().Get("q")
+		if query == "" {
+			fmt.Fprint(w, `{"success": false, "error": "no query"}`)
+			return
+		}
+
+		// Use LLM to refine the query for better semantic search
+		refined, err := llmClient.RefineQuery(query)
+		if err != nil {
+			fmt.Fprintf(w, `{"success": false, "error": "%v"}`, err)
+			return
+		}
+
+		fmt.Fprintf(w, `{"success": true, "refined": %s}`, JSONEscape(refined))
 	})
 
 	// Import index endpoint

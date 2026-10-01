@@ -120,3 +120,76 @@ Questions:`, text)
 func (c *Client) SetModel(model string) {
 	c.model = model
 }
+
+// RefineQuery improves a search query for better semantic search results
+func (c *Client) RefineQuery(query string) (string, error) {
+	// Prompt for query refinement
+	prompt := fmt.Sprintf(`Given this search query, rewrite it to be more effective for semantic search. 
+Make it clearer, more specific, and include relevant keywords that would help find the right documents.
+Return ONLY the refined query, nothing else:
+
+Original query: %s
+
+Refined query:`, query)
+
+	// Build request
+	reqBody := map[string]interface{}{
+		"model": c.model,
+		"messages": []map[string]string{
+			{"role": "system", "content": "You are a search query optimization assistant. Improve user queries for semantic search."},
+			{"role": "user", "content": prompt},
+		},
+		"temperature": 0.3,
+		"max_tokens": 128,
+	}
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	// Send request
+	req, err := http.NewRequest("POST", c.serverURL+"/v1/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	log.Printf("[DEBUG LLM] Refining query: %s", query)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("LLM request failed with status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	// Parse response
+	var response struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if len(response.Choices) == 0 {
+		return "", fmt.Errorf("no response from LLM")
+	}
+
+	refined := strings.TrimSpace(response.Choices[0].Message.Content)
+	// Remove any leading/trailing quotes
+	refined = strings.Trim(refined, "\"'")
+
+	log.Printf("[DEBUG LLM] Refined query: %s -> %s", query, refined)
+
+	return refined, nil
+}
