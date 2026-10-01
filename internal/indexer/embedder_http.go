@@ -70,21 +70,33 @@ func (s *SimpleVectorStore) Search(query search.Vector, k int) []search.Result[s
 		return results[i].score > results[j].score
 	})
 
-	// Apply minimum score threshold to filter out noise
-	// For 1024D vectors, random/unrelated vectors average ~0.5 similarity
-	// Only return results with score > 0.65 (genuine matches)
-	const minScoreThreshold = 0.65
+	// Apply smart threshold to filter out noise
+	// Key insight: In 1024D space, random vectors have expected similarity ~0.5
+	// If top score is close to this noise floor (≤ 0.55), treat as "no real match"
+	const noiseFloor = 0.55
+	threshold := noiseFloor
+	
+	// Use adaptive threshold: require results to be within 15% of top score
+	// This ensures we get all related results while filtering noise
+	if len(results) > 0 && results[0].score > noiseFloor {
+		threshold = results[0].score * 0.85 // Allow 15% variance from top
+		if threshold < noiseFloor {
+			threshold = noiseFloor
+		}
+	}
+	
 	var filteredResults []scoredResult
 	for _, r := range results {
-		if r.score >= minScoreThreshold {
+		if r.score >= threshold {
 			filteredResults = append(filteredResults, r)
 		}
 	}
 	if len(filteredResults) == 0 {
-		log.Printf("[DEBUG SimpleVectorStore.Search] No results above threshold %.2f", minScoreThreshold)
-		return nil // Return empty instead of noisy results
+		log.Printf("[DEBUG SimpleVectorStore.Search] No results above noise floor (%.2f)", noiseFloor)
+		return nil // Return empty - no real matches
 	}
 	results = filteredResults
+	log.Printf("[DEBUG SimpleVectorStore.Search] Threshold=%.2f, got %d results", threshold, len(results))
 
 	// Take top k
 	if len(results) > k {
