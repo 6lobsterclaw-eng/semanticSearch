@@ -33,10 +33,13 @@ var (
 )
 
 type SearchResult struct {
-	Path    string  `json:"path"`
-	Title   string  `json:"title"`
-	Score   float64 `json:"score"`
-	Snippet string  `json:"snippet"`
+	Index     int     `json:"index"`
+	ChunkID   string  `json:"chunkId"`
+	Path      string  `json:"path"`
+	Title     string  `json:"title"`
+	Extract   string  `json:"extract"`
+	Location  string  `json:"location"`
+	Score     float64 `json:"score"`
 }
 
 func main() {
@@ -74,6 +77,10 @@ func main() {
         button.secondary { background: #6c757d; }
         .score { color: #666; font-size: 12px; }
         .snippet { margin: 10px 0; padding: 10px; background: #f0f0f0; border-left: 3px solid #007bff; font-style: italic; }
+        .results-table { width: 100%; border-collapse: collapse; margin-top: 15px; background: white; }
+        .results-table th, .results-table td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        .results-table th { background: #007bff; color: white; }
+        .results-table tr:hover { background: #f5f5f5; }
         #results { margin-top: 20px; }
         .result { padding: 15px; margin: 10px 0; background: white; border: 1px solid #ddd; border-radius: 5px; }
         .error { background: #f8d7da; color: #721c24; }
@@ -493,16 +500,23 @@ func main() {
                         document.getElementById('results').innerHTML = '<div class="error">Error: ' + d.error + '</div>';
                         return;
                     }
-                    if (d.results.length == 0) {
+                    if (!d || d.length == 0) {
                         document.getElementById('results').innerHTML = '<div>No results found</div>';
                         return;
                     }
-                    var html = '';
-                    d.results.forEach(function(r) {
-                        html += '<div class="result"><strong>' + r.title + '</strong><br>' +
-                                '<span class="score">Score: ' + r.score.toFixed(4) + '</span><br>' +
-                                '<small>' + r.path + '</small></div>';
+                    // Build results table
+                    var html = '<table class="results-table">' +
+                        '<thead><tr><th>#</th><th>Extract</th><th>Location</th><th>Score</th></tr></thead>' +
+                        '<tbody>';
+                    d.forEach(function(r) {
+                        html += '<tr>' +
+                            '<td>' + r.index + '</td>' +
+                            '<td>' + r.extract + '</td>' +
+                            '<td>' + r.location + '</td>' +
+                            '<td>' + r.score.toFixed(4) + '</td>' +
+                            '</tr>';
                     });
+                    html += '</tbody></table>';
                     document.getElementById('results').innerHTML = html;
                 });
         }
@@ -686,17 +700,8 @@ func main() {
 		}
 
 		results := idx.Search(query, 10)
-		
-		var out []SearchResult
-		for _, r := range results {
-			out = append(out, SearchResult{
-				Path:  r.Value,
-				Title: r.Value,
-				Score: float64(r.Relevance),
-			})
-		}
 
-		data, _ := json.Marshal(out)
+		data, _ := json.Marshal(results)
 		fmt.Fprint(w, string(data))
 	})
 

@@ -27,8 +27,9 @@ type Indexer struct {
 	}
 	// Store chunks with embeddings for export
 	storedChunks []Chunk
-	docCount     int // total chunks
-	fileCount    int // number of files indexed
+	chunkMap     map[string]Chunk // chunkID -> Chunk for lookup during search
+	docCount     int              // total chunks
+	fileCount    int              // number of files indexed
 }
 
 // NewIndexer creates a new indexer with the given embedder
@@ -40,8 +41,9 @@ func NewIndexer(embedder interface {
 	LoadIndex(string) error
 }) *Indexer {
 	return &Indexer{
-		index:    search.NewIndex[string](),
-		embedder: embedder,
+		index:      search.NewIndex[string](),
+		embedder:   embedder,
+		chunkMap:   make(map[string]Chunk),
 	}
 }
 
@@ -127,13 +129,15 @@ func (idx *Indexer) indexFile(path string) (int, error) {
 		idx.embedder.AddDocument(chunkID, vec, title+" | "+sentence)
 		idx.docCount++
 
-		// Store chunk for export
-		idx.storedChunks = append(idx.storedChunks, Chunk{
+		// Store chunk for export and lookup
+		chunk := Chunk{
 			ID:        chunkID,
 			Source:    title,
 			Sentence:  sentence,
 			Embedding: vec,
-		})
+		}
+		idx.storedChunks = append(idx.storedChunks, chunk)
+		idx.chunkMap[chunkID] = chunk
 	}
 
 	// Increment file count after successful indexing
@@ -288,11 +292,138 @@ func (idx *Indexer) FileCount() int {
 	return idx.fileCount
 }
 
-// Search searches indexed documents
-func (idx *Indexer) Search(query string, k int) []search.Result[string] {
+// SearchResult contains enriched search result data
+type SearchResult struct {
+	Index     int     // Display index (1, 2, 3...)
+	ChunkID   string  // Chunk identifier
+	Path      string  // File path
+	Title     string  // Document title
+	Extract   string  // Sentence with keyword bolded
+	Location  string  // "Page X" or "Row X"
+	Score     float64 // Relevance score
+}
+
+// Search searches indexed documents and returns enriched results
+func (idx *Indexer) Search(query string, k int) []SearchResult {
 	vec, err := idx.embedder.Embed(query)
 	if err != nil {
 		return nil
 	}
-	return idx.embedder.Search(vec, k)
+
+	results := idx.embedder.Search(vec, k)
+	keyword := strings.ToLower(query)
+
+	var out []SearchResult
+	for i, r := range results {
+		// Extract chunkID from the result value (format: "filename#index")
+		chunkID := r.Value
+
+		// Look up chunk in our map
+		chunk, ok := idx.chunkMap[chunkID]
+		if !ok {
+			// Fallback: parse from the embedded text if not in map
+			parts := strings.Split(r.Value, " | ")
+			title := ""
+			sentence := ""
+			if len(parts) >= 2 {
+				title = parts[0]
+				sentence = parts[1]
+			}
+			chunk = Chunk{
+				ID:       chunkID,
+				Source:   title,
+				Sentence: sentence,
+			}
+		}
+
+		// Extract sentence with keyword bolded
+		extract := boldKeyword(chunk.Sentence, query)
+
+		// Find location (page or row)
+		location := findLocation(chunk.Sentence, chunk.Source)
+
+		out = append(out, SearchResult{
+			Index:     i + 1,
+			ChunkID:   chunkID,
+			Path:      chunk.Source,
+			Title:     chunk.Source,
+			Extract:   extract,
+			Location:  location,
+			Score:     float64(r.Relevance),
+		})
+	}
+
+	return out
+}
+
+// boldKeyword wraps the keyword in ** for bold display
+func boldKeyword(sentence, keyword string) string {
+	lowerSentence := strings.ToLower(sentence)
+	lowerKeyword := strings.ToLower(keyword)
+
+	// Find keyword position
+	pos := strings.Index(lowerSentence, lowerKeyword)
+	if pos == -1 {
+		// Keyword not found, return first 200 chars
+		if len(sentence) > 200 {
+			return sentence[:200] + "..."
+		}
+		return sentence
+	}
+
+	// Find sentence boundaries around keyword
+	start := findSentenceStart(sentence, pos)
+	end := findSentenceEnd(sentence, pos+len(keyword))
+
+	// Get the extract
+	extract := sentence[start:end]
+	if len(extract) > 300 {
+		extract = extract[:300] + "..."
+	}
+
+	// Bold the keyword (case-insensitive)
+	re := regexp.MustCompile(`(?i)` + regexp.QuoteMeta(keyword))
+	extract = re.ReplaceAllString(extract, "**$0**")
+
+	return extract
+}
+
+// findSentenceStart finds the start of the sentence containing pos
+func findSentenceStart(content string, pos int) int {
+	if pos > len(content) {
+		pos = len(content)
+	}
+	for i := pos; i >= 0; i-- {
+		if i > 0 && (content[i-1] == '.' || content[i-1] == '!' || content[i-1] == '?') {
+			return i
+		}
+	}
+	return 0
+}
+
+// findSentenceEnd finds the end of the sentence after pos
+func findSentenceEnd(content string, pos int) int {
+	if pos > len(content) {
+		pos = len(content)
+	}
+	for i := pos; i < len(content); i++ {
+		if content[i] == '.' || content[i] == '!' || content[i] == '?' {
+			return i + 1
+		}
+	}
+	return len(content)
+}
+
+// findLocation estimates page number for PDF or row for MD/TXT
+func findLocation(sentence, source string) string {
+	// Estimate based on sentence length and typical page size (~3000 chars)
+	// This is a rough estimate; real implementation would track pages during extraction
+	lines := strings.Count(sentence, "\n") + 1
+
+	if strings.HasSuffix(strings.ToLower(source), ".pdf") {
+		// Rough estimate: assume 3000 chars per page
+		return "Page 1" // Would need proper page tracking
+	}
+
+	return fmt.Sprintf("Row %d", lines)
 }
