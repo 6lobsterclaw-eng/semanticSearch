@@ -93,7 +93,7 @@ func (s *SimpleVectorStore) Search(query search.Vector, k int) []search.Result[s
 
 	// DEBUG: Log top 20 raw scores before filtering
 	log.Printf("[DEBUG] Top 20 raw scores before filtering:")
-	hasBrainInIndex := false
+	brainCount := 0
 	for i := 0; i < len(results) && i < 20; i++ {
 		// Try to find content for this ID
 		content := ""
@@ -107,7 +107,7 @@ func (s *SimpleVectorStore) Search(query search.Vector, k int) []search.Result[s
 				}
 				// Check if content has "brain"
 				if strings.Contains(strings.ToLower(v.content), "brain") {
-					hasBrainInIndex = true
+					brainCount++
 					log.Printf("[DEBUG BRAIN FOUND] %d: id=%q score=%.4f content=%q", i+1, results[i].id, results[i].score, content)
 				}
 				break
@@ -117,15 +117,17 @@ func (s *SimpleVectorStore) Search(query search.Vector, k int) []search.Result[s
 			log.Printf("[DEBUG]   %d: id=%q score=%.4f content=%q", i+1, results[i].id, results[i].score, content)
 		}
 	}
-	if !hasBrainInIndex {
-		log.Printf("[DEBUG] WARNING: No indexed content contains 'brain'!")
-		// Search for any content with brain
-		for _, v := range s.vectors {
-			if strings.Contains(strings.ToLower(v.content), "brain") {
-				log.Printf("[DEBUG] Found 'brain' in id=%q content=%q", v.id, v.content)
-			}
+	log.Printf("[DEBUG] Total 'brain' in top 20: %d", brainCount)
+	
+	// Count ALL brain instances in index
+	totalBrainInIndex := 0
+	belowThreshold := 0
+	for _, v := range s.vectors {
+		if strings.Contains(strings.ToLower(v.content), "brain") {
+			totalBrainInIndex++
 		}
 	}
+	log.Printf("[DEBUG] Total 'brain' instances in index: %d", totalBrainInIndex)
 
 	// Apply threshold to filter out noise
 	// Key insight: In 1024D space, random vectors have expected similarity ~0.5
