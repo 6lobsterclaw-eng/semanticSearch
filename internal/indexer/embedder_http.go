@@ -121,7 +121,6 @@ func (s *SimpleVectorStore) Search(query search.Vector, k int) []search.Result[s
 	
 	// Count ALL brain instances in index
 	totalBrainInIndex := 0
-	belowThreshold := 0
 	for _, v := range s.vectors {
 		if strings.Contains(strings.ToLower(v.content), "brain") {
 			totalBrainInIndex++
