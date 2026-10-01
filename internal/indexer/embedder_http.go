@@ -99,7 +99,8 @@ func (e *HTTPEmbedder) Embed(text string) (search.Vector, error) {
 
 // AddDocument adds a document to the embedder's index
 func (e *HTTPEmbedder) AddDocument(id string, vec search.Vector, content string) {
-	e.index.Add(vec, content)
+	// Store ID as value so we can look up the chunk later
+	e.index.Add(vec, id)
 }
 
 // Search searches the index
