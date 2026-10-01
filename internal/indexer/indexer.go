@@ -655,16 +655,8 @@ func (idx *Indexer) searchSemantic(query string, k int) []SearchResult {
 			}
 		}
 
-		// Parent-Child: Get parent content for context
-		contentToShow := chunk.Sentence
-		if chunk.ParentID != "" {
-			if parent, ok := idx.parentMap[chunk.ParentID]; ok {
-				contentToShow = parent.Sentence
-				log.Printf("[DEBUG] Using parent content for child %s", chunkID)
-			}
-		}
-
-		extract := boldKeyword(contentToShow, query)
+		// Show child chunk extract (not parent)
+		extract := boldKeyword(chunk.Sentence, query)
 		location := findLocation(chunkID, chunk.Source)
 
 		out = append(out, SearchResult{
@@ -693,19 +685,12 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		// Check if query appears in chunk content
 		contentLower := strings.ToLower(chunk.Sentence)
 		if strings.Contains(contentLower, queryLower) {
-			// Parent-Child: Get parent content for context
-			contentToShow := chunk.Sentence
-			if chunk.ParentID != "" {
-				if parent, ok := idx.parentMap[chunk.ParentID]; ok {
-					contentToShow = parent.Sentence
-				}
-			}
-			
-			extract := boldKeyword(contentToShow, query)
+			// Show child chunk extract (not parent)
+			extract := boldKeyword(chunk.Sentence, query)
 			location := findLocation(chunkID, chunk.Source)
 			
 			// Position determines rank (earlier = better rank)
-			pos := strings.Index(strings.ToLower(contentToShow), queryLower)
+			pos := strings.Index(contentLower, queryLower)
 			
 			results = append(results, SearchResult{
 				ChunkID:   chunkID,
@@ -799,16 +784,8 @@ func (idx *Indexer) mergeResults(query string, semantic, keyword []SearchResult,
 		// If both, show as keyword since keyword is more precise for exact matches
 		isKeyword := r.keyword
 		
-		// Parent-Child: Get parent content for context
-		contentToShow := chunk.Sentence
-		if chunk.ParentID != "" {
-			if parent, ok := idx.parentMap[chunk.ParentID]; ok {
-				contentToShow = parent.Sentence
-			}
-		}
-		
-		// Bold the keyword in extract
-		extract := boldKeyword(contentToShow, query)
+		// Show child chunk extract (not parent)
+		extract := boldKeyword(chunk.Sentence, query)
 		
 		out = append(out, SearchResult{
 			Index:     i + 1,
