@@ -515,12 +515,21 @@ func (idx *Indexer) searchSemanticWeighted(query string, k int) []SearchResult {
 	
 	for parentID, children := range parentChildren {
 		parent, ok := idx.parentMap[parentID]
+		
+		// If parent not found (e.g., loaded from old index), use first child's content
+		var parentSentence string
 		if !ok {
-			continue
+			if len(children) > 0 {
+				parentSentence = children[0].child.Sentence
+			} else {
+				continue
+			}
+		} else {
+			parentSentence = parent.Sentence
 		}
 		
 		// Calculate parent vector similarity
-		sparent := calculateVectorSimilarity(parent.Sentence, query, vec, idx.embedder)
+		sparent := calculateVectorSimilarity(parentSentence, query, vec, idx.embedder)
 		
 		// Find max child score
 		var schildMax float64
@@ -538,7 +547,7 @@ func (idx *Indexer) searchSemanticWeighted(query string, k int) []SearchResult {
 		
 		scoredParents = append(scoredParents, scoredParent{
 			parentID:   parentID,
-			parent:     parent,
+			parent:     Chunk{Sentence: parentSentence, Source: children[0].child.Source}, // Fallback parent content
 			children:   children,
 			schildMax:  schildMax,
 			sparent:    sparent,
