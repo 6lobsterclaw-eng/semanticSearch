@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/ledongthuc/pdf"
@@ -394,47 +395,47 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	log.Printf("[DEBUG Indexer.searchKeyword] Query: %q", query)
 	
 	queryLower := strings.ToLower(query)
-	var out []SearchResult
-	seen := make(map[string]bool) // Track seen chunkIDs
+	var results []SearchResult
 	
 	for chunkID, chunk := range idx.chunkMap {
-		if seen[chunkID] {
-			continue
-		}
-		
 		// Check if query appears in chunk content
 		contentLower := strings.ToLower(chunk.Sentence)
 		if strings.Contains(contentLower, queryLower) {
-			seen[chunkID] = true
-			
 			extract := boldKeyword(chunk.Sentence, query)
 			location := findLocation(chunkID, chunk.Source)
 			
-			// Score based on position (earlier = higher score)
+			// Position determines rank (earlier = better rank)
 			pos := strings.Index(contentLower, queryLower)
-			score := 1.0 - float64(pos)/float64(len(contentLower))
-			if score < 0.5 {
-				score = 0.5 // Minimum score for exact keyword match
-			}
 			
-			out = append(out, SearchResult{
-				Index:     len(out) + 1,
+			results = append(results, SearchResult{
 				ChunkID:   chunkID,
 				Path:      chunk.Source,
 				Title:     chunk.Source,
 				Extract:   extract,
 				Location:  location,
-				Score:     score,
-				IsKeyword: true, // Keyword result
+				Score:     float64(pos), // Use position as score (lower = better)
+				IsKeyword: true,
 			})
 		}
 	}
 	
-	log.Printf("[DEBUG Indexer.searchKeyword] Found %d keyword matches", len(out))
-	return out
+	// Sort by position (earlier = better rank = lower score)
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Score < results[j].Score
+	})
+	
+	// Assign proper indices
+	for i := range results {
+		results[i].Index = i + 1
+	}
+	
+	log.Printf("[DEBUG Indexer.searchKeyword] Found %d keyword matches", len(results))
+	return results
 }
 
-// mergeResults combines semantic and keyword results
+// mergeResults combines semantic and keyword results using Reciprocal Rank Fusion (RRF)
+// RRF Formula: Score = 1/(k+rank_semantic) + 1/(k+rank_keyword)
+// k=60 is the smoothing constant to prevent top results from dominating
 func (idx *Indexer) mergeResults(semantic, keyword []SearchResult, mode string) []SearchResult {
 	if mode == "semantic" {
 		return semantic
@@ -442,41 +443,72 @@ func (idx *Indexer) mergeResults(semantic, keyword []SearchResult, mode string) 
 	if mode == "keyword" {
 		return keyword
 	}
+
+	// Hybrid mode: use RRF to combine results
+	const k = 60 // RRF smoothing constant
 	
-	// Hybrid mode: merge, deduplicate by chunkID, sort by score
-	seen := make(map[string]bool)
+	// Build RRF scores map
+	rrfScores := make(map[string]float64)
+	seen := make(map[string]int) // Track which sources contributed (for IsKeyword flag)
+	
+	// Add semantic results with their ranks
+	for rank, r := range semantic {
+		rrfScores[r.ChunkID] += 1.0 / (k + float64(rank+1)) // rank is 0-indexed, convert to 1-indexed
+		seen[r.ChunkID] = seen[r.ChunkID] | 1 // bit 1 = semantic
+	}
+	
+	// Add keyword results with their ranks
+	for rank, r := range keyword {
+		rrfScores[r.ChunkID] += 1.0 / (k + float64(rank+1))
+		seen[r.ChunkID] = seen[r.ChunkID] | 2 // bit 2 = keyword
+	}
+	
+	// Convert to sorted slice
+	type rrfResult struct {
+		chunkID   string
+		score     float64
+		semantic  bool
+		keyword   bool
+	}
+	var results []rrfResult
+	for chunkID, score := range rrfScores {
+		s := seen[chunkID]
+		results = append(results, rrfResult{
+			chunkID: chunkID,
+			score:   score,
+			semantic: s&1 != 0,
+			keyword:  s&2 != 0,
+		})
+	}
+	
+	// Sort by RRF score descending
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].score > results[j].score
+	})
+	
+	// Build final results
 	var out []SearchResult
-	
-	// Add keyword results first (they're exact matches)
-	for _, r := range keyword {
-		if !seen[r.ChunkID] {
-			seen[r.ChunkID] = true
-			r.Index = len(out) + 1
-			out = append(out, r)
+	for i, r := range results {
+		// Look up chunk info
+		chunk, ok := idx.chunkMap[r.chunkID]
+		if !ok {
+			continue
 		}
-	}
-	
-	// Add semantic results (skip duplicates)
-	for _, r := range semantic {
-		if !seen[r.ChunkID] {
-			seen[r.ChunkID] = true
-			r.Index = len(out) + 1
-			out = append(out, r)
-		}
-	}
-	
-	// Sort by score descending
-	for i := 0; i < len(out)-1; i++ {
-		for j := i + 1; j < len(out); j++ {
-			if out[j].Score > out[i].Score {
-				out[i], out[j] = out[j], out[i]
-			}
-		}
-	}
-	
-	// Re-index
-	for i := range out {
-		out[i].Index = i + 1
+		
+		// Determine if it's keyword (true if only keyword, false if only semantic)
+		// If both, show as keyword since keyword is more precise for exact matches
+		isKeyword := r.keyword
+		
+		out = append(out, SearchResult{
+			Index:     i + 1,
+			ChunkID:   r.chunkID,
+			Path:      chunk.Source,
+			Title:     chunk.Source,
+			Extract:   chunk.Sentence,
+			Location:  findLocation(r.chunkID, chunk.Source),
+			Score:     r.score,
+			IsKeyword: isKeyword,
+		})
 	}
 	
 	return out
