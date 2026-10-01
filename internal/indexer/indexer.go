@@ -338,8 +338,8 @@ func (idx *Indexer) Search(query string, k int) []SearchResult {
 		// Extract sentence with keyword bolded
 		extract := boldKeyword(chunk.Sentence, query)
 
-		// Find location (page or row)
-		location := findLocation(chunk.Sentence, chunk.Source)
+		// Find location (chunk number)
+		location := findLocation(chunkID, chunk.Source)
 
 		out = append(out, SearchResult{
 			Index:     i + 1,
@@ -404,16 +404,22 @@ func findSentenceEnd(content string, pos int) int {
 	return len(content)
 }
 
-// findLocation returns location info: filename and page/line number
-func findLocation(sentence, source string) string {
+// findLocation returns location info: filename and chunk number
+func findLocation(chunkID, source string) string {
 	// Get just the filename from source path
 	filename := filepath.Base(source)
 
-	if strings.HasSuffix(strings.ToLower(source), ".pdf") {
-		return filename + " - Page 1" // Would need proper page tracking
+	// Extract chunk index from chunkID (format: "filename#index")
+	parts := strings.Split(chunkID, "#")
+	chunkNum := 1
+	if len(parts) >= 2 {
+		fmt.Sscanf(parts[1], "%d", &chunkNum)
+		chunkNum++ // Make it 1-indexed
 	}
 
-	// For MD/TXT, estimate line number based on sentence position
-	// This is rough - real implementation would track line numbers during extraction
-	return filename + " - Line ~1"
+	if strings.HasSuffix(strings.ToLower(source), ".pdf") {
+		return fmt.Sprintf("%s - Chunk %d", filename, chunkNum)
+	}
+
+	return fmt.Sprintf("%s - Chunk %d", filename, chunkNum)
 }
