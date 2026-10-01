@@ -129,13 +129,11 @@ func (s *SimpleVectorStore) Search(query search.Vector, k int) []search.Result[s
 
 	// Apply threshold to filter out noise
 	// Key insight: In 1024D space, random vectors have expected similarity ~0.5
-	// Use noise floor only - no relative threshold
-	// This allows all genuinely relevant results through (scores 0.55+)
-	const noiseFloor = 0.55
+	// Use noise floor of 0.50 to filter truly random matches while keeping valid results
+	const noiseFloor = 0.50
 	threshold := noiseFloor
 	
 	// If top score is above noise floor, include everything above noise floor
-	// (don't apply relative threshold - it cuts off valid results)
 	if len(results) > 0 && results[0].score > noiseFloor {
 		threshold = noiseFloor
 	}
