@@ -500,7 +500,7 @@ func main() {
                     return response.json();
                 })
                 .then(function(d) {
-                    console.log('Search data:', d);
+                    console.log('Search data:', JSON.stringify(d));
                     if (d.error) {
                         document.getElementById('results').innerHTML = '<div class="error">Error: ' + d.error + '</div>';
                         return;
