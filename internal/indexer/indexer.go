@@ -417,9 +417,5 @@ func findLocation(chunkID, source string) string {
 		chunkNum++ // Make it 1-indexed
 	}
 
-	if strings.HasSuffix(strings.ToLower(source), ".pdf") {
-		return fmt.Sprintf("%s - Chunk %d", filename, chunkNum)
-	}
-
-	return fmt.Sprintf("%s - Chunk %d", filename, chunkNum)
+	return fmt.Sprintf("%s(%d)", filename, chunkNum)
 }
