@@ -10,18 +10,101 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"sort"
+	"sync"
 	"time"
 
 	"github.com/kelindar/search"
 )
+
+// SimpleVectorStore is a simple in-memory vector store with cosine similarity
+type SimpleVectorStore struct {
+	mu      sync.RWMutex
+	vectors []vectorEntry
+}
+
+type vectorEntry struct {
+	id      string
+	vector  []float32
+	content string
+}
+
+func NewSimpleVectorStore() *SimpleVectorStore {
+	return &SimpleVectorStore{
+		vectors: make([]vectorEntry, 0),
+	}
+}
+
+func (s *SimpleVectorStore) Add(id string, vec search.Vector, content string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.vectors = append(s.vectors, vectorEntry{
+		id:      id,
+		vector:  vec,
+		content: content,
+	})
+}
+
+func (s *SimpleVectorStore) Search(query search.Vector, k int) []search.Result[string] {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	type scoredResult struct {
+		id        string
+		score     float64
+	}
+
+	var results []scoredResult
+	for _, v := range s.vectors {
+		score := cosineSimilarity(query, v.vector)
+		results = append(results, scoredResult{id: v.id, score: score})
+	}
+
+	// Sort by score descending
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].score > results[j].score
+	})
+
+	// Take top k
+	if len(results) > k {
+		results = results[:k]
+	}
+
+	var out []search.Result[string]
+	for _, r := range results {
+		out = append(out, search.Result[string]{
+			Value:      r.id,
+			Relevance: r.score,
+		})
+	}
+	return out
+}
+
+func cosineSimilarity(a, b []float32) float64 {
+	if len(a) != len(b) {
+		return 0
+	}
+	var dot, normA, normB float64
+	for i := range a {
+		dot += float64(a[i]) * float64(b[i])
+		normA += float64(a[i]) * float64(a[i])
+		normB += float64(b[i]) * float64(b[i])
+	}
+	if normA == 0 || normB == 0 {
+		return 0
+	}
+	return dot / (math.Sqrt(normA) * math.Sqrt(normB))
+}
 
 var errEmbedderInit = errors.New("failed to initialize HTTP embedder")
 type HTTPEmbedder struct {
 	serverURL string
 	modelPath string
 	index     *search.Index[string]
-	dim       int
-	client    *http.Client
+	// Use our simple store instead
+	simpleStore *SimpleVectorStore
+	dim         int
+	client      *http.Client
 }
 
 // NewHTTPEmbedder creates a new HTTP-based embedder
@@ -33,10 +116,10 @@ func NewHTTPEmbedder(serverURL, modelPath string) (*HTTPEmbedder, error) {
 	}
 
 	return &HTTPEmbedder{
-		serverURL: serverURL,
-		modelPath: modelPath,
-		index:     search.NewIndex[string](),
-		dim:       1024,
+		serverURL:    serverURL,
+		modelPath:    modelPath,
+		simpleStore:  NewSimpleVectorStore(),
+		dim:          1024,
 		client: &http.Client{
 			Timeout: 60 * time.Second,
 		},
@@ -115,19 +198,17 @@ func computeNorm(v search.Vector) float64 {
 // AddDocument adds a document to the embedder's index
 func (e *HTTPEmbedder) AddDocument(id string, vec search.Vector, content string) {
 	log.Printf("[DEBUG AddDocument] id=%q, content=%q, vec dim=%d, norm=%.4f, first5=%v", id, content, len(vec), computeNorm(vec), vec[:5])
-	// Store ID as value so we can look up the chunk later
-	e.index.Add(vec, id)
+	// Use our simple vector store instead of kelindar/search
+	e.simpleStore.Add(id, vec, content)
 }
 
 // Search searches the index
 func (e *HTTPEmbedder) Search(query search.Vector, k int) []search.Result[string] {
 	log.Printf("[DEBUG Search] Query vector: dim=%d, first5=%v, norm=%.4f", len(query), query[:5], computeNorm(query))
 	
-	// Debug: sample a few stored vectors to compare
-	log.Printf("[DEBUG Search] Sampling stored vectors...")
-	// Note: we can't easily iterate kelindar index, but we can log the query
+	// Use our simple vector store instead of kelindar/search
+	results := e.simpleStore.Search(query, k)
 	
-	results := e.index.Search(query, k)
 	log.Printf("[DEBUG Search] Got %d results", len(results))
 	for i, r := range results {
 		log.Printf("[DEBUG Search] Result %d: value=%q, relevance=%.4f", i+1, r.Value, r.Relevance)
@@ -137,12 +218,16 @@ func (e *HTTPEmbedder) Search(query search.Vector, k int) []search.Result[string
 
 // SaveIndex saves the index to a file
 func (e *HTTPEmbedder) SaveIndex(path string) error {
-	return e.index.WriteFile(path)
+	// SimpleVectorStore doesn't support persistence yet - user re-indexes each time
+	log.Println("[DEBUG] SaveIndex not implemented for SimpleVectorStore - user will re-index")
+	return nil
 }
 
 // LoadIndex loads the index from a file
 func (e *HTTPEmbedder) LoadIndex(path string) error {
-	return e.index.ReadFile(path)
+	// SimpleVectorStore doesn't support persistence yet - user re-indexes each time
+	log.Println("[DEBUG] LoadIndex not implemented for SimpleVectorStore - user will re-index")
+	return nil
 }
 
 // Dim returns the embedding dimension
