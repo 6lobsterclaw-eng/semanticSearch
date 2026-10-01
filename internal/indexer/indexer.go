@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -455,6 +456,7 @@ func (idx *Indexer) Search(query string, k int, mode string) []SearchResult {
 // searchSemanticWeighted performs vector search with parent-child weighted scoring
 // Final Score = α×Schild + (1-α)×Sparent
 // α = 0.7 (70% child, 30% parent)
+// Uses cosine similarity for both child and parent vectors
 func (idx *Indexer) searchSemanticWeighted(query string, k int) []SearchResult {
 	const alpha = 0.7 // Weight for child score
 	
@@ -505,7 +507,7 @@ func (idx *Indexer) searchSemanticWeighted(query string, k int) []SearchResult {
 		parent      Chunk
 		children    []childResult
 		schildMax   float64  // Best child vector score
-		sparent     float64  // Parent BM25 score
+		sparent     float64  // Parent vector similarity
 		finalScore  float64  // Weighted combination
 	}
 	
@@ -517,8 +519,8 @@ func (idx *Indexer) searchSemanticWeighted(query string, k int) []SearchResult {
 			continue
 		}
 		
-		// Calculate parent BM25 score (simplified: keyword frequency)
-		sparent := calculateBM25(parent.Sentence, query)
+		// Calculate parent vector similarity
+		sparent := calculateVectorSimilarity(parent.Sentence, query, vec, idx.embedder)
 		
 		// Find max child score
 		var schildMax float64
@@ -529,9 +531,8 @@ func (idx *Indexer) searchSemanticWeighted(query string, k int) []SearchResult {
 		}
 		
 		// Weighted Linear Combination: α×Schild + (1-α)×Sparent
-		// Normalize scores to 0-1 range first
 		schildNorm := schildMax // Already 0-1 from cosine similarity
-		sparentNorm := sparant  // Normalize BM25 to 0-1
+		sparentNorm := sparant  // Already 0-1 from cosine similarity
 		
 		finalScore := alpha*schildNorm + (1-alpha)*sparentNorm
 		
@@ -585,30 +586,31 @@ func (idx *Indexer) searchSemanticWeighted(query string, k int) []SearchResult {
 	return out
 }
 
-// calculateBM25 calculates a simplified BM25 score for a document
-// Returns normalized score between 0 and 1
-func calculateBM25(doc, query string) float64 {
-	docLower := strings.ToLower(doc)
-	queryLower := strings.ToLower(query)
-	
-	// Simple term frequency approach (simplified BM25)
-	words := strings.Fields(queryLower)
-	tf := 0
-	for _, word := range words {
-		tf += strings.Count(docLower, word)
-	}
-	
-	// Normalize by document length (longer docs can have more matches)
-	docLen := float64(len(strings.Fields(docLower)))
-	if docLen == 0 {
+// calculateVectorSimilarity calculates cosine similarity between query and text
+func calculateVectorSimilarity(text, query string, queryVec []float32, embedder interface {
+	Embed(string) ([]float32, error)
+}) float64 {
+	// Get embedding for the text
+	textVec, err := embedder.Embed(text)
+	if err != nil {
+		log.Printf("[DEBUG] Failed to embed text for similarity: %v", err)
 		return 0
 	}
 	
-	// IDF would need collection stats, so we use simple TF normalization
-	// Score = tf / (tf + 1) to cap at 1.0
-	score := float64(tf) / (float64(tf) + 1)
+	// Calculate cosine similarity
+	var dotProduct, normA, normB float64
 	
-	return score
+	for i := range queryVec {
+		dotProduct += float64(queryVec[i]) * float64(textVec[i])
+		normA += float64(queryVec[i]) * float64(queryVec[i])
+		normB += float64(textVec[i]) * float64(textVec[i])
+	}
+	
+	if normA == 0 || normB == 0 {
+		return 0
+	}
+	
+	return dotProduct / (math.Sqrt(normA) * math.Sqrt(normB))
 }
 
 // searchSemantic performs vector-based semantic search
