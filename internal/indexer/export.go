@@ -55,21 +55,36 @@ func (idx *Indexer) Import(path string) error {
 		return err
 	}
 	defer f.Close()
-	
+
 	var exported ExportedIndex
 	dec := gob.NewDecoder(f)
 	if err := dec.Decode(&exported); err != nil {
 		return err
 	}
-	
+
+	// Reset counters
+	idx.docCount = 0
+	idx.fileCount = 0
+
+	// Track files seen
+	filesSeen := make(map[string]bool)
+
 	// Add each chunk to the index
 	for _, chunk := range exported.Chunks {
 		vec := make([]float32, len(chunk.Embedding))
 		copy(vec, chunk.Embedding)
 		idx.embedder.AddDocument(chunk.ID, vec, chunk.Source+" | "+chunk.Sentence)
 		idx.storedChunks = append(idx.storedChunks, chunk)
+		idx.chunkMap[chunk.ID] = chunk
+		idx.docCount++
+
+		// Count unique files
+		if !filesSeen[chunk.Source] {
+			filesSeen[chunk.Source] = true
+			idx.fileCount++
+		}
 	}
-	
+
 	log.Printf("Imported %d chunks from %s", len(exported.Chunks), path)
 	return nil
 }
