@@ -482,51 +482,6 @@ func (idx *Indexer) mergeResults(semantic, keyword []SearchResult, mode string) 
 	return out
 }
 
-	var out []SearchResult
-	for i, r := range results {
-		// Extract chunkID from the result value (format: "filename#index")
-		chunkID := r.Value
-		log.Printf("[DEBUG Indexer.Search] Result %d: chunkID=%q, relevance=%.4f", i+1, chunkID, r.Relevance)
-
-		// Look up chunk in our map
-		chunk, ok := idx.chunkMap[chunkID]
-		if !ok {
-			log.Printf("Chunk not found in map: %q", chunkID)
-			// Fallback: parse from the embedded text if not in map
-			parts := strings.Split(r.Value, " | ")
-			title := ""
-			sentence := ""
-			if len(parts) >= 2 {
-				title = parts[0]
-				sentence = parts[1]
-			}
-			chunk = Chunk{
-				ID:       chunkID,
-				Source:   title,
-				Sentence: sentence,
-			}
-		}
-
-		// Extract sentence with keyword bolded
-		extract := boldKeyword(chunk.Sentence, query)
-
-		// Find location (chunk number)
-		location := findLocation(chunkID, chunk.Source)
-
-		out = append(out, SearchResult{
-			Index:     i + 1,
-			ChunkID:   chunkID,
-			Path:      chunk.Source,
-			Title:     chunk.Source,
-			Extract:   extract,
-			Location:  location,
-			Score:     float64(r.Relevance),
-		})
-	}
-
-	return out
-}
-
 // boldKeyword wraps the keyword in <b> tags for HTML bold display
 func boldKeyword(sentence, keyword string) string {
 	lowerSentence := strings.ToLower(sentence)
