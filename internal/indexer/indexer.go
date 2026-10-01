@@ -27,6 +27,10 @@ type Indexer struct {
 		SaveIndex(string) error
 		LoadIndex(string) error
 	}
+	// Optional LLM for question generation
+	llmClient interface {
+		GenerateQuestions(string) ([]string, error)
+	}
 	// Store chunks with embeddings for export
 	storedChunks []Chunk
 	chunkMap     map[string]Chunk // chunkID -> Chunk for lookup during search
@@ -49,6 +53,13 @@ func NewIndexer(embedder interface {
 		chunkMap:   make(map[string]Chunk),
 		parentMap:  make(map[string]Chunk),
 	}
+}
+
+// SetLLMClient sets the LLM client for question generation
+func (idx *Indexer) SetLLMClient(client interface {
+	GenerateQuestions(string) ([]string, error)
+}) {
+	idx.llmClient = client
 }
 
 // IndexFolder indexes all PDF and MD files in a directory
@@ -135,12 +146,48 @@ func (idx *Indexer) indexFile(path string) (int, error) {
 		childChunks := splitIntoChildChunks(parentContent)
 		log.Printf("  Parent %d: %d child chunks", parentIdx, len(childChunks))
 
+		// Generate questions for parent chunk
+		var parentQuestions []string
+		if idx.llmClient != nil {
+			qs, err := idx.llmClient.GenerateQuestions(parentContent)
+			if err != nil {
+				log.Printf("Warning: failed to generate questions for parent %s: %v", parentID, err)
+			} else {
+				parentQuestions = qs
+				log.Printf("    Parent %d: generated %d questions", parentIdx, len(parentQuestions))
+			}
+		}
+
+		// Embed parent and its questions
+		parentVec, err := idx.embedder.Embed(parentContent)
+		if err != nil {
+			log.Printf("Warning: failed to embed parent %s: %v", parentID, err)
+		} else {
+			idx.embedder.AddDocument(parentID, parentVec, title+" | "+parentContent)
+		}
+
+		// Embed parent question vectors
+		var parentQuestionEmbeds [][]float32
+		for _, q := range parentQuestions {
+			qVec, err := idx.embedder.Embed(q)
+			if err != nil {
+				log.Printf("Warning: failed to embed question: %v", err)
+				continue
+			}
+			qID := parentID + "#q"
+			idx.embedder.AddDocument(qID, qVec, title+" | "+q)
+			parentQuestionEmbeds = append(parentQuestionEmbeds, qVec)
+		}
+
 		// Store parent chunk
 		parentChunk := Chunk{
-			ID:        parentID,
-			Source:    title,
-			Sentence:  parentContent,
-			ParentID:  "", // Parent has no parent
+			ID:                 parentID,
+			Source:             title,
+			Sentence:           parentContent,
+			ParentID:           "", // Parent has no parent
+			Embedding:          parentVec,
+			GeneratedQuestions: parentQuestions,
+			QuestionEmbeddings: parentQuestionEmbeds,
 		}
 		idx.parentMap[parentID] = parentChunk
 
@@ -158,13 +205,40 @@ func (idx *Indexer) indexFile(path string) (int, error) {
 			idx.docCount++
 			childCount++
 
+			// Generate questions for child chunk
+			var childQuestions []string
+			if idx.llmClient != nil {
+				qs, err := idx.llmClient.GenerateQuestions(childContent)
+				if err != nil {
+					log.Printf("Warning: failed to generate questions for child %s: %v", childID, err)
+				} else {
+					childQuestions = qs
+					log.Printf("      Child %d: generated %d questions", childIdx, len(childQuestions))
+				}
+			}
+
+			// Embed child question vectors
+			var childQuestionEmbeds [][]float32
+			for _, q := range childQuestions {
+				qVec, err := idx.embedder.Embed(q)
+				if err != nil {
+					log.Printf("Warning: failed to embed question: %v", err)
+					continue
+				}
+				qID := childID + "#q"
+				idx.embedder.AddDocument(qID, qVec, title+" | "+q)
+				childQuestionEmbeds = append(childQuestionEmbeds, qVec)
+			}
+
 			// Store child chunk with parent reference
 			chunk := Chunk{
-				ID:        childID,
-				Source:    title,
-				Sentence:  childContent,
-				ParentID:  parentID,
-				Embedding: vec,
+				ID:                 childID,
+				Source:             title,
+				Sentence:           childContent,
+				ParentID:           parentID,
+				Embedding:          vec,
+				GeneratedQuestions: childQuestions,
+				QuestionEmbeddings: childQuestionEmbeds,
 			}
 			idx.storedChunks = append(idx.storedChunks, chunk)
 			idx.chunkMap[childID] = chunk
@@ -453,10 +527,55 @@ func (idx *Indexer) Search(query string, k int, mode string) []SearchResult {
 	return idx.mergeResults(query, semanticResults, keywordResults, mode)
 }
 
+// calculateMaxSimilarity computes max cosine similarity between query vector and chunk's text + question embeddings
+func calculateMaxSimilarity(chunk Chunk, queryVec []float32, embedder interface {
+	Embed(string) ([]float32, error)
+}) float64 {
+	maxSim := 0.0
+
+	// Compare with text embedding if available
+	if len(chunk.Embedding) > 0 {
+		sim := cosineSimilarityVec(queryVec, chunk.Embedding)
+		if sim > maxSim {
+			maxSim = sim
+		}
+	}
+
+	// Compare with question embeddings
+	for _, qEmb := range chunk.QuestionEmbeddings {
+		if len(qEmb) > 0 {
+			sim := cosineSimilarityVec(queryVec, qEmb)
+			if sim > maxSim {
+				maxSim = sim
+			}
+		}
+	}
+
+	return maxSim
+}
+
+// cosineSimilarityVec calculates cosine similarity between two vectors
+func cosineSimilarityVec(a, b []float32) float64 {
+	var dotProduct, normA, normB float64
+
+	for i := range a {
+		dotProduct += float64(a[i]) * float64(b[i])
+		normA += float64(a[i]) * float64(a[i])
+		normB += float64(b[i]) * float64(b[i])
+	}
+
+	if normA == 0 || normB == 0 {
+		return 0
+	}
+
+	return dotProduct / (math.Sqrt(normA) * math.Sqrt(normB))
+}
+
 // searchSemanticWeighted performs vector search with parent-child weighted scoring
 // Final Score = α×Schild + (1-α)×Sparent
 // α = 0.7 (70% child, 30% parent)
 // Uses cosine similarity for both child and parent vectors
+// Also considers question embeddings (max similarity)
 func (idx *Indexer) searchSemanticWeighted(query string, k int) []SearchResult {
 	const alpha = 0.7 // Weight for child score
 	
@@ -477,27 +596,30 @@ func (idx *Indexer) searchSemanticWeighted(query string, k int) []SearchResult {
 		child   Chunk
 		schild  float64
 	}
-	
+
 	parentChildren := make(map[string][]childResult)
-	
+
 	for _, r := range results {
 		chunkID := r.Value
 		chunk, ok := idx.chunkMap[chunkID]
 		if !ok {
 			continue
 		}
-		
+
 		// Skip parent chunks (not children)
 		if chunk.ParentID == "" {
 			continue
 		}
-		
-		schild := float64(r.Relevance)
-		
+
+		// Calculate max similarity including question embeddings
+		maxSim := calculateMaxSimilarity(chunk, vec, idx.embedder)
+
+		log.Printf("[DEBUG] Chunk %s: raw=%.4f, maxWithQuestions=%.4f", chunkID, r.Relevance, maxSim)
+
 		parentChildren[chunk.ParentID] = append(parentChildren[chunk.ParentID], childResult{
 			chunkID: chunkID,
 			child:   chunk,
-			schild:  schild,
+			schild:  maxSim, // Use max similarity (text + questions)
 		})
 	}
 

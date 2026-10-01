@@ -12,6 +12,7 @@ import (
 
 	"semantic-search/internal/detect"
 	"semantic-search/internal/indexer"
+	"semantic-search/internal/llm"
 	"github.com/kelindar/search"
 )
 
@@ -30,6 +31,9 @@ var (
 	}
 	idx          *indexer.Indexer
 	mu           sync.RWMutex
+	// LLM client for question generation
+	llmClient    *llm.Client
+	llmModelPath string
 )
 
 type SearchResult struct {
@@ -133,11 +137,25 @@ func main() {
     </div>
     
     <div class="step">
-        <h3>Step 1: Configure Model</h3>
-        <select id="modelSelect" style="width: 300px;">
-            <option value="">-- Select GGUF Model --</option>
-        </select>
-        <button id="startServerBtn" onclick="startServer()" disabled>Start Server</button>
+        <h3>Step 1: Configure Models</h3>
+        
+        <div style="margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+            <strong>Embedding Model</strong> (for semantic search)<br>
+            <select id="modelSelect" style="width: 300px; margin-top: 5px;">
+                <option value="">-- Select GGUF Model --</option>
+            </select>
+            <button id="startServerBtn" onclick="startServer()" disabled>Start Server</button>
+        </div>
+        
+        <div style="padding: 10px; background: #f8f9fa; border-radius: 5px;">
+            <strong>Question Generation Model</strong> (for generating search questions)<br>
+            <select id="llmModelSelect" style="width: 300px; margin-top: 5px;">
+                <option value="">-- Select GGUF Model --</option>
+            </select>
+            <button id="startLLMBtn" onclick="startLLMServer()" disabled>Start LLM Server</button>
+            <span id="llmStatus" style="margin-left: 10px; color: #666;"></span>
+        </div>
+        
         <div id="serverInfo"></div>
     </div>
     
@@ -199,24 +217,42 @@ func main() {
                     document.getElementById('serverStatus').textContent = status;
                     
                     var select = document.getElementById('modelSelect');
+                    var llmSelect = document.getElementById('llmModelSelect');
                     d.gguf.forEach(function(f) {
-                        var opt = document.createElement('option');
-                        opt.value = f;
-                        opt.textContent = f;
-                        select.appendChild(opt);
+                        // Embedding models go to modelSelect
+                        if (f.toLowerCase().includes('embedding')) {
+                            var opt = document.createElement('option');
+                            opt.value = f;
+                            opt.textContent = f;
+                            select.appendChild(opt);
+                        }
+                        
+                        // Chat/Instruct models go to LLM dropdown (exclude embedding models)
+                        if (!f.toLowerCase().includes('embedding') && 
+                            (f.toLowerCase().includes('instruct') || f.toLowerCase().includes('chat'))) {
+                            var opt2 = document.createElement('option');
+                            opt2.value = f;
+                            opt2.textContent = f;
+                            llmSelect.appendChild(opt2);
+                        }
                     });
                     
                     if (d.server && d.gguf.length > 0) {
                         document.getElementById('startServerBtn').disabled = false;
+                        document.getElementById('startLLMBtn').disabled = false;
                     }
                 });
         };
+        
+        // Global LLM state
+        var llmServerRunning = false;
+        var llmServerURL = "";
         
         function startServer() {
             var model = document.getElementById('modelSelect').value;
             if (!model) { alert('Please select a model'); return; }
             
-            document.getElementById('serverInfo').innerHTML = '<div class="info">Starting server...</div>';
+            document.getElementById('serverInfo').innerHTML = '<div class="info">Starting embedding server...</div>';
             
             fetch('/startServer?model=' + encodeURIComponent(model))
                 .then(r => r.json())
@@ -226,6 +262,26 @@ func main() {
                         pollServerStatus();
                     } else {
                         document.getElementById('serverInfo').innerHTML = '<div class="error">Error: ' + d.error + '</div>';
+                    }
+                });
+        }
+        
+        function startLLMServer() {
+            var model = document.getElementById('llmModelSelect').value;
+            if (!model) { alert('Please select a model'); return; }
+            
+            document.getElementById('llmStatus').textContent = 'Starting...';
+            
+            fetch('/startLLMServer?model=' + encodeURIComponent(model))
+                .then(r => r.json())
+                .then(d => {
+                    if (d.success) {
+                        llmServerRunning = true;
+                        document.getElementById('llmStatus').textContent = 'Running on ' + d.url;
+                        document.getElementById('llmStatus').style.color = 'green';
+                    } else {
+                        document.getElementById('llmStatus').textContent = 'Error: ' + d.error;
+                        document.getElementById('llmStatus').style.color = 'red';
                     }
                 });
         }
@@ -640,6 +696,11 @@ func main() {
 						}
 						embedder = emb
 						idx = indexer.NewIndexer(emb)
+						// Wire LLM client if already started
+						if llmClient != nil {
+							idx.SetLLMClient(llmClient)
+							log.Println("LLM client wired to indexer")
+						}
 						serverStatus = "ready"
 						serverStatusMsg = "Server ready!"
 						log.Println("Server ready")
@@ -654,6 +715,81 @@ func main() {
 		}()
 
 		fmt.Fprint(w, `{"success": true, "status": "starting"}`)
+	})
+
+	// LLM Server endpoint - starts a separate llama-server for question generation
+	var llmServerCmd *exec.Cmd
+	var llmServerURL string
+	var llmServerStatus string = "idle"
+
+	http.HandleFunc("/startLLMServer", func(w http.ResponseWriter, r *http.Request) {
+		model := r.URL.Query().Get("model")
+		if model == "" {
+			fmt.Fprint(w, `{"success": false, "error": "no model selected"}`)
+			return
+		}
+
+		if llmServerStatus == "starting" || llmServerStatus == "ready" {
+			fmt.Fprint(w, fmt.Sprintf(`{"success": true, "url": %q, "status": "already running"}`, llmServerURL))
+			return
+		}
+
+		exeDir, _ := detect.FindExeFolder()
+		modelPath := exeDir + "/" + model
+		serverPath, _ := detect.FindLlamaServer(exeDir)
+
+		port := 8082
+		llmServerURL = fmt.Sprintf("http://localhost:%d", port)
+
+		log.Printf("Starting LLM server: %s -m %s --port %d", serverPath, modelPath, port)
+
+		llmServerStatus = "starting"
+
+		// Start server in background
+		go func() {
+			// Kill existing if any
+			if llmServerCmd != nil && llmServerCmd.Process != nil {
+				llmServerCmd.Process.Kill()
+			}
+
+			llmServerCmd = exec.Command(serverPath, "-m", modelPath, "--port", fmt.Sprintf("%d", port), "-c", "4096")
+			llmServerCmd.Stdout = log.Writer()
+			llmServerCmd.Stderr = log.Writer()
+
+			if err := llmServerCmd.Start(); err != nil {
+				llmServerStatus = "error"
+				log.Printf("LLM Server start error: %v", err)
+				return
+			}
+
+			// Wait for server to be ready
+			for i := 0; i < 60; i++ {
+				if resp, err := http.Get(llmServerURL + "/v1/models"); err == nil {
+					resp.Body.Close()
+					if resp.StatusCode == 200 {
+						llmServerStatus = "ready"
+						log.Println("LLM Server ready")
+
+						// Create LLM client and wire to indexer
+						llmClient = llm.NewClient(llmServerURL, model)
+						llmModelPath = model
+						if idx != nil {
+							idx.SetLLMClient(llmClient)
+							log.Println("LLM client wired to indexer")
+						}
+
+						return
+					}
+				}
+				time.Sleep(1 * time.Second)
+			}
+
+			llmServerStatus = "error"
+			log.Printf("LLM Server timeout")
+		}()
+
+		// Return immediately with the URL that will be ready soon
+		fmt.Fprintf(w, `{"success": true, "url": "http://localhost:%d", "status": "starting"}`, port)
 	})
 
 	// Server status endpoint - poll this for progress
