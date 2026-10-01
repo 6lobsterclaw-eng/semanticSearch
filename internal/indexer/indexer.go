@@ -532,7 +532,7 @@ func (idx *Indexer) searchSemanticWeighted(query string, k int) []SearchResult {
 		
 		// Weighted Linear Combination: α×Schild + (1-α)×Sparent
 		schildNorm := schildMax // Already 0-1 from cosine similarity
-		sparentNorm := sparant  // Already 0-1 from cosine similarity
+		sparentNorm := sparent // Already 0-1 from cosine similarity
 		
 		finalScore := alpha*schildNorm + (1-alpha)*sparentNorm
 		
@@ -541,7 +541,7 @@ func (idx *Indexer) searchSemanticWeighted(query string, k int) []SearchResult {
 			parent:     parent,
 			children:   children,
 			schildMax:  schildMax,
-			sparent:    sparant,
+			sparent:    sparent,
 			finalScore: finalScore,
 		})
 	}
@@ -566,7 +566,7 @@ func (idx *Indexer) searchSemanticWeighted(query string, k int) []SearchResult {
 			}
 		}
 		
-		log.Printf("[DEBUG] Parent %s: schild=%.4f, sparant=%.4f, final=%.4f", 
+		log.Printf("[DEBUG] Parent %s: schild=%.4f, sparent=%.4f, final=%.4f", 
 			p.parentID, p.schildMax, p.sparent, p.finalScore)
 		
 		extract := boldKeyword(p.parent.Sentence, query)
