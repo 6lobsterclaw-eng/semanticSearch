@@ -305,12 +305,18 @@ type SearchResult struct {
 
 // Search searches indexed documents and returns enriched results
 func (idx *Indexer) Search(query string, k int) []SearchResult {
+	log.Printf("Indexer.Search: query=%q, k=%d", query, k)
+
 	vec, err := idx.embedder.Embed(query)
 	if err != nil {
+		log.Printf("Indexer.Search: embed failed: %v", err)
 		return nil
 	}
 
+	log.Printf("Indexer.Search: got embedding, len=%d", len(vec))
+
 	results := idx.embedder.Search(vec, k)
+	log.Printf("Indexer.Search: raw results count=%d", len(results))
 
 	var out []SearchResult
 	for i, r := range results {

@@ -43,6 +43,8 @@ func NewHTTPEmbedder(serverURL, modelPath string) (*HTTPEmbedder, error) {
 
 // Embed generates a vector for the given text via HTTP
 func (e *HTTPEmbedder) Embed(text string) (search.Vector, error) {
+	log.Printf("HTTPEmbedder.Embed: text len=%d", len(text))
+
 	// OpenAI-compatible embedding request format
 	type EmbedRequest struct {
 		Input string `json:"input"`

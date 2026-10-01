@@ -699,7 +699,9 @@ func main() {
 			return
 		}
 
+		log.Printf("Searching for: %s", query)
 		results := idx.Search(query, 10)
+		log.Printf("Search returned %d results", len(results))
 
 		data, _ := json.Marshal(results)
 		fmt.Fprint(w, string(data))
