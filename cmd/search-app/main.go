@@ -703,7 +703,8 @@ func main() {
 		}
 
 		log.Printf("Search: query=%q", query)
-		results := idx.Search(query, 10)
+		// Return up to 100 results to show all related items
+		results := idx.Search(query, 100)
 		log.Printf("Search: got %d results", len(results))
 
 		data, _ := json.Marshal(results)
