@@ -114,7 +114,7 @@ func computeNorm(v search.Vector) float64 {
 
 // AddDocument adds a document to the embedder's index
 func (e *HTTPEmbedder) AddDocument(id string, vec search.Vector, content string) {
-	log.Printf("[DEBUG AddDocument] id=%q, content=%q, vec dim=%d, norm=%.4f", id, content, len(vec), computeNorm(vec))
+	log.Printf("[DEBUG AddDocument] id=%q, content=%q, vec dim=%d, norm=%.4f, first5=%v", id, content, len(vec), computeNorm(vec), vec[:5])
 	// Store ID as value so we can look up the chunk later
 	e.index.Add(vec, id)
 }
