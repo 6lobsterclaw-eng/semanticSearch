@@ -311,7 +311,6 @@ func (idx *Indexer) Search(query string, k int) []SearchResult {
 	}
 
 	results := idx.embedder.Search(vec, k)
-	keyword := strings.ToLower(query)
 
 	var out []SearchResult
 	for i, r := range results {
