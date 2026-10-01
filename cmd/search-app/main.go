@@ -493,9 +493,14 @@ func main() {
             if (!indexed) { alert('Please index a folder first'); return; }
             
             document.getElementById('results').innerHTML = '<div class="info">Searching...</div>';
+            console.log('Starting search for:', query);
             fetch('/search?q=' + encodeURIComponent(query))
-                .then(r => r.json())
-                .then(d => {
+                .then(function(response) {
+                    console.log('Response status:', response.status);
+                    return response.json();
+                })
+                .then(function(d) {
+                    console.log('Search data:', d);
                     if (d.error) {
                         document.getElementById('results').innerHTML = '<div class="error">Error: ' + d.error + '</div>';
                         return;
@@ -518,6 +523,10 @@ func main() {
                     });
                     html += '</tbody></table>';
                     document.getElementById('results').innerHTML = html;
+                })
+                .catch(function(err) {
+                    console.error('Search error:', err);
+                    document.getElementById('results').innerHTML = '<div class="error">Error: ' + err + '</div>';
                 });
         }
     </script>
