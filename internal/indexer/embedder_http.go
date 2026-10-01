@@ -127,19 +127,17 @@ func (s *SimpleVectorStore) Search(query search.Vector, k int) []search.Result[s
 		}
 	}
 
-	// Apply smart threshold to filter out noise
+	// Apply threshold to filter out noise
 	// Key insight: In 1024D space, random vectors have expected similarity ~0.5
-	// If top score is close to this noise floor (≤ 0.55), treat as "no real match"
+	// Use noise floor only - no relative threshold
+	// This allows all genuinely relevant results through (scores 0.55+)
 	const noiseFloor = 0.55
 	threshold := noiseFloor
 	
-	// Use adaptive threshold: require results to be within 15% of top score
-	// This ensures we get all related results while filtering noise
+	// If top score is above noise floor, include everything above noise floor
+	// (don't apply relative threshold - it cuts off valid results)
 	if len(results) > 0 && results[0].score > noiseFloor {
-		threshold = results[0].score * 0.85 // Allow 15% variance from top
-		if threshold < noiseFloor {
-			threshold = noiseFloor
-		}
+		threshold = noiseFloor
 	}
 	
 	var filteredResults []scoredResult
