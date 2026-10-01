@@ -122,6 +122,11 @@ func (e *HTTPEmbedder) AddDocument(id string, vec search.Vector, content string)
 // Search searches the index
 func (e *HTTPEmbedder) Search(query search.Vector, k int) []search.Result[string] {
 	log.Printf("[DEBUG Search] Query vector: dim=%d, first5=%v, norm=%.4f", len(query), query[:5], computeNorm(query))
+	
+	// Debug: sample a few stored vectors to compare
+	log.Printf("[DEBUG Search] Sampling stored vectors...")
+	// Note: we can't easily iterate kelindar index, but we can log the query
+	
 	results := e.index.Search(query, k)
 	log.Printf("[DEBUG Search] Got %d results", len(results))
 	for i, r := range results {
