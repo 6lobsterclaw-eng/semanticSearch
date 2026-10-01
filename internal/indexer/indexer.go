@@ -305,18 +305,23 @@ type SearchResult struct {
 
 // Search searches indexed documents and returns enriched results
 func (idx *Indexer) Search(query string, k int) []SearchResult {
+	log.Printf("[DEBUG Indexer.Search] Query: %q", query)
 	vec, err := idx.embedder.Embed(query)
 	if err != nil {
+		log.Printf("[DEBUG Indexer.Search] Embed error: %v", err)
 		return nil
 	}
 
+	log.Printf("[DEBUG Indexer.Search] Query vec dim=%d", len(vec))
 	results := idx.embedder.Search(vec, k)
+
+	log.Printf("[DEBUG Indexer.Search] Got %d raw results", len(results))
 
 	var out []SearchResult
 	for i, r := range results {
 		// Extract chunkID from the result value (format: "filename#index")
 		chunkID := r.Value
-		log.Printf("Search result %d: chunkID=%q", i+1, chunkID)
+		log.Printf("[DEBUG Indexer.Search] Result %d: chunkID=%q, relevance=%.4f", i+1, chunkID, r.Relevance)
 
 		// Look up chunk in our map
 		chunk, ok := idx.chunkMap[chunkID]

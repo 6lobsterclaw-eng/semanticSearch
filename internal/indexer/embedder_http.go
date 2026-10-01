@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
+	"math"
 	"net/http"
 	"time"
 
@@ -43,6 +45,8 @@ func NewHTTPEmbedder(serverURL, modelPath string) (*HTTPEmbedder, error) {
 
 // Embed generates a vector for the given text via HTTP
 func (e *HTTPEmbedder) Embed(text string) (search.Vector, error) {
+	log.Printf("[DEBUG Embed] Input text: %q (len=%d)", text, len(text))
+
 	// OpenAI-compatible embedding request format
 	type EmbedRequest struct {
 		Input string `json:"input"`
@@ -94,18 +98,36 @@ func (e *HTTPEmbedder) Embed(text string) (search.Vector, error) {
 		vec[i] = float32(v)
 	}
 
+	log.Printf("[DEBUG Embed] Output vector: dim=%d, first5=%v, norm=%.4f", len(vec), vec[:5], computeNorm(vec))
+
 	return vec, nil
+}
+
+// computeNorm computes L2 norm of a vector
+func computeNorm(v search.Vector) float64 {
+	var sum float64
+	for _, x := range v {
+		sum += float64(x * x)
+	}
+	return math.Sqrt(sum)
 }
 
 // AddDocument adds a document to the embedder's index
 func (e *HTTPEmbedder) AddDocument(id string, vec search.Vector, content string) {
+	log.Printf("[DEBUG AddDocument] id=%q, content=%q, vec dim=%d, norm=%.4f", id, content, len(vec), computeNorm(vec))
 	// Store ID as value so we can look up the chunk later
 	e.index.Add(vec, id)
 }
 
 // Search searches the index
 func (e *HTTPEmbedder) Search(query search.Vector, k int) []search.Result[string] {
-	return e.index.Search(query, k)
+	log.Printf("[DEBUG Search] Query vector: dim=%d, first5=%v, norm=%.4f", len(query), query[:5], computeNorm(query))
+	results := e.index.Search(query, k)
+	log.Printf("[DEBUG Search] Got %d results", len(results))
+	for i, r := range results {
+		log.Printf("[DEBUG Search] Result %d: value=%q, relevance=%.4f", i+1, r.Value, r.Relevance)
+	}
+	return results
 }
 
 // SaveIndex saves the index to a file
