@@ -328,7 +328,7 @@ func (idx *Indexer) Search(query string, k int, mode string) []SearchResult {
 	}
 	
 	// Merge results
-	return idx.mergeResults(semanticResults, keywordResults, mode)
+	return idx.mergeResults(query, semanticResults, keywordResults, mode)
 }
 
 // searchSemantic performs vector-based semantic search
@@ -436,7 +436,7 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 // mergeResults combines semantic and keyword results using Reciprocal Rank Fusion (RRF)
 // RRF Formula: Score = 1/(k+rank_semantic) + 1/(k+rank_keyword)
 // k=60 is the smoothing constant to prevent top results from dominating
-func (idx *Indexer) mergeResults(semantic, keyword []SearchResult, mode string) []SearchResult {
+func (idx *Indexer) mergeResults(query string, semantic, keyword []SearchResult, mode string) []SearchResult {
 	if mode == "semantic" {
 		return semantic
 	}
@@ -499,12 +499,15 @@ func (idx *Indexer) mergeResults(semantic, keyword []SearchResult, mode string) 
 		// If both, show as keyword since keyword is more precise for exact matches
 		isKeyword := r.keyword
 		
+		// Bold the keyword in extract
+		extract := boldKeyword(chunk.Sentence, query)
+		
 		out = append(out, SearchResult{
 			Index:     i + 1,
 			ChunkID:   r.chunkID,
 			Path:      chunk.Source,
 			Title:     chunk.Source,
-			Extract:   chunk.Sentence,
+			Extract:   extract,
 			Location:  findLocation(r.chunkID, chunk.Source),
 			Score:     r.score,
 			IsKeyword: isKeyword,
