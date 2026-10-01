@@ -164,6 +164,14 @@ func main() {
         <h3>Step 3: Search</h3>
         <input type="text" id="query" placeholder="Enter search query" style="width: 400px;">
         <button onclick="doSearch()">Search</button>
+        <div style="margin-top: 10px;">
+            <label style="margin-right: 15px;">
+                <input type="checkbox" id="semanticCheck" checked> Semantic
+            </label>
+            <label style="margin-right: 15px;">
+                <input type="checkbox" id="keywordCheck" checked> Keyword (BM25)
+            </label>
+        </div>
     </div>
     
     <div id="results"></div>
@@ -492,8 +500,19 @@ func main() {
             if (!query) { alert('Please enter query'); return; }
             if (!indexed) { alert('Please index a folder first'); return; }
             
+            var semantic = document.getElementById('semanticCheck').checked;
+            var keyword = document.getElementById('keywordCheck').checked;
+            
+            if (!semantic && !keyword) {
+                alert('Please select at least one search mode'); return;
+            }
+            
             document.getElementById('results').innerHTML = '<div class="info">Searching...</div>';
-            fetch('/search?q=' + encodeURIComponent(query))
+            
+            var url = '/search?q=' + encodeURIComponent(query) + 
+                      '&semantic=' + semantic + 
+                      '&keyword=' + keyword;
+            fetch(url)
                 .then(function(response) { return response.json(); })
                 .then(function(d) {
                     if (d.error) {
@@ -506,14 +525,16 @@ func main() {
                     }
                     // Build results table
                     var html = '<table class="results-table">' +
-                        '<thead><tr><th>#</th><th>Extract</th><th>Location</th><th>Score</th></tr></thead>' +
+                        '<thead><tr><th>#</th><th>Extract</th><th>Location</th><th>Score</th><th>Type</th></tr></thead>' +
                         '<tbody>';
                     d.forEach(function(r) {
+                        var typeLabel = r.isKeyword ? '🔍 Keyword' : '🧠 Semantic';
                         html += '<tr>' +
                             '<td>' + r.index + '</td>' +
                             '<td>' + r.extract + '</td>' +
                             '<td>' + r.location + '</td>' +
                             '<td>' + r.score.toFixed(4) + '</td>' +
+                            '<td>' + typeLabel + '</td>' +
                             '</tr>';
                     });
                     html += '</tbody></table>';
@@ -702,9 +723,20 @@ func main() {
 			return
 		}
 
-		log.Printf("Search: query=%q", query)
+		// Get search mode from query params
+		semantic := r.URL.Query().Get("semantic") == "true"
+		keyword := r.URL.Query().Get("keyword") == "true"
+		
+		mode := "semantic"
+		if semantic && keyword {
+			mode = "hybrid"
+		} else if keyword {
+			mode = "keyword"
+		}
+
+		log.Printf("Search: query=%q, mode=%s", query, mode)
 		// Return up to 100 results to show all related items
-		results := idx.Search(query, 100)
+		results := idx.Search(query, 100, mode)
 		log.Printf("Search: got %d results", len(results))
 
 		data, _ := json.Marshal(results)

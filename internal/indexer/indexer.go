@@ -294,28 +294,193 @@ func (idx *Indexer) FileCount() int {
 
 // SearchResult contains enriched search result data
 type SearchResult struct {
-	Index    int     `json:"index"`
-	ChunkID  string  `json:"chunkId"`
-	Path     string  `json:"path"`
-	Title    string  `json:"title"`
-	Extract  string  `json:"extract"`
-	Location string  `json:"location"`
-	Score    float64 `json:"score"`
+	Index     int     `json:"index"`
+	ChunkID   string  `json:"chunkId"`
+	Path      string  `json:"path"`
+	Title     string  `json:"title"`
+	Extract   string  `json:"extract"`
+	Location  string  `json:"location"`
+	Score     float64 `json:"score"`
+	IsKeyword bool    `json:"isKeyword"` // true if from keyword search
 }
 
 // Search searches indexed documents and returns enriched results
-func (idx *Indexer) Search(query string, k int) []SearchResult {
-	log.Printf("[DEBUG Indexer.Search] Query: %q", query)
+// mode: "semantic" for vector search, "keyword" for substring match, "hybrid" for both
+func (idx *Indexer) Search(query string, k int, mode string) []SearchResult {
+	log.Printf("[DEBUG Indexer.Search] Query: %q, mode: %s", query, mode)
+	
+	// If no mode specified, default to semantic
+	if mode == "" {
+		mode = "semantic"
+	}
+	
+	var semanticResults, keywordResults []SearchResult
+	
+	// Semantic search (vector-based)
+	if mode == "semantic" || mode == "hybrid" {
+		semanticResults = idx.searchSemantic(query, k)
+	}
+	
+	// Keyword search (substring match)
+	if mode == "keyword" || mode == "hybrid" {
+		keywordResults = idx.searchKeyword(query, k)
+	}
+	
+	// Merge results
+	return idx.mergeResults(semanticResults, keywordResults, mode)
+}
+
+// searchSemantic performs vector-based semantic search
+func (idx *Indexer) searchSemantic(query string, k int) []SearchResult {
 	vec, err := idx.embedder.Embed(query)
 	if err != nil {
-		log.Printf("[DEBUG Indexer.Search] Embed error: %v", err)
+		log.Printf("[DEBUG Indexer.searchSemantic] Embed error: %v", err)
 		return nil
 	}
 
-	log.Printf("[DEBUG Indexer.Search] Query vec dim=%d", len(vec))
-	results := idx.embedder.Search(vec, k)
+	log.Printf("[DEBUG Indexer.searchSemantic] Query vec dim=%d", len(vec))
+	results := idx.embedder.Search(vec, k*2) // Get more to filter
 
-	log.Printf("[DEBUG Indexer.Search] Got %d raw results", len(results))
+	log.Printf("[DEBUG Indexer.searchSemantic] Got %d raw results", len(results))
+
+	var out []SearchResult
+	seen := make(map[string]bool) // Track seen chunkIDs
+	
+	for i, r := range results {
+		chunkID := r.Value
+		if seen[chunkID] {
+			continue
+		}
+		seen[chunkID] = true
+		
+		log.Printf("[DEBUG Indexer.searchSemantic] Result %d: chunkID=%q, relevance=%.4f", i+1, chunkID, r.Relevance)
+
+		chunk, ok := idx.chunkMap[chunkID]
+		if !ok {
+			parts := strings.Split(r.Value, " | ")
+			title := ""
+			sentence := ""
+			if len(parts) >= 2 {
+				title = parts[0]
+				sentence = parts[1]
+			}
+			chunk = Chunk{
+				ID:       chunkID,
+				Source:   title,
+				Sentence: sentence,
+			}
+		}
+
+		extract := boldKeyword(chunk.Sentence, query)
+		location := findLocation(chunkID, chunk.Source)
+
+		out = append(out, SearchResult{
+			Index:     len(out) + 1,
+			ChunkID:   chunkID,
+			Path:      chunk.Source,
+			Title:     chunk.Source,
+			Extract:   extract,
+			Location:  location,
+			Score:     float64(r.Relevance),
+			IsKeyword: false, // Semantic result
+		})
+	}
+
+	return out
+}
+
+// searchKeyword performs substring-based keyword search
+func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
+	log.Printf("[DEBUG Indexer.searchKeyword] Query: %q", query)
+	
+	queryLower := strings.ToLower(query)
+	var out []SearchResult
+	seen := make(map[string]bool) // Track seen chunkIDs
+	
+	for chunkID, chunk := range idx.chunkMap {
+		if seen[chunkID] {
+			continue
+		}
+		
+		// Check if query appears in chunk content
+		contentLower := strings.ToLower(chunk.Sentence)
+		if strings.Contains(contentLower, queryLower) {
+			seen[chunkID] = true
+			
+			extract := boldKeyword(chunk.Sentence, query)
+			location := findLocation(chunkID, chunk.Source)
+			
+			// Score based on position (earlier = higher score)
+			pos := strings.Index(contentLower, queryLower)
+			score := 1.0 - float64(pos)/float64(len(contentLower))
+			if score < 0.5 {
+				score = 0.5 // Minimum score for exact keyword match
+			}
+			
+			out = append(out, SearchResult{
+				Index:     len(out) + 1,
+				ChunkID:   chunkID,
+				Path:      chunk.Source,
+				Title:     chunk.Source,
+				Extract:   extract,
+				Location:  location,
+				Score:     score,
+				IsKeyword: true, // Keyword result
+			})
+		}
+	}
+	
+	log.Printf("[DEBUG Indexer.searchKeyword] Found %d keyword matches", len(out))
+	return out
+}
+
+// mergeResults combines semantic and keyword results
+func (idx *Indexer) mergeResults(semantic, keyword []SearchResult, mode string) []SearchResult {
+	if mode == "semantic" {
+		return semantic
+	}
+	if mode == "keyword" {
+		return keyword
+	}
+	
+	// Hybrid mode: merge, deduplicate by chunkID, sort by score
+	seen := make(map[string]bool)
+	var out []SearchResult
+	
+	// Add keyword results first (they're exact matches)
+	for _, r := range keyword {
+		if !seen[r.ChunkID] {
+			seen[r.ChunkID] = true
+			r.Index = len(out) + 1
+			out = append(out, r)
+		}
+	}
+	
+	// Add semantic results (skip duplicates)
+	for _, r := range semantic {
+		if !seen[r.ChunkID] {
+			seen[r.ChunkID] = true
+			r.Index = len(out) + 1
+			out = append(out, r)
+		}
+	}
+	
+	// Sort by score descending
+	for i := 0; i < len(out)-1; i++ {
+		for j := i + 1; j < len(out); j++ {
+			if out[j].Score > out[i].Score {
+				out[i], out[j] = out[j], out[i]
+			}
+		}
+	}
+	
+	// Re-index
+	for i := range out {
+		out[i].Index = i + 1
+	}
+	
+	return out
+}
 
 	var out []SearchResult
 	for i, r := range results {
