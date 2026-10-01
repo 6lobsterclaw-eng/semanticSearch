@@ -569,7 +569,8 @@ func (idx *Indexer) searchSemanticWeighted(query string, k int) []SearchResult {
 		log.Printf("[DEBUG] Parent %s: schild=%.4f, sparent=%.4f, final=%.4f", 
 			p.parentID, p.schildMax, p.sparent, p.finalScore)
 		
-		extract := boldKeyword(p.parent.Sentence, query)
+		// Show child chunk extract (not parent)
+		extract := boldKeyword(bestChild.child.Sentence, query)
 		
 		out = append(out, SearchResult{
 			Index:     i + 1,
