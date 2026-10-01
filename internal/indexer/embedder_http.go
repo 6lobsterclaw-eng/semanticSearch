@@ -70,6 +70,22 @@ func (s *SimpleVectorStore) Search(query search.Vector, k int) []search.Result[s
 		return results[i].score > results[j].score
 	})
 
+	// Apply minimum score threshold to filter out noise
+	// For 1024D vectors, random/unrelated vectors average ~0.5 similarity
+	// Only return results with score > 0.65 (genuine matches)
+	const minScoreThreshold = 0.65
+	var filteredResults []scoredResult
+	for _, r := range results {
+		if r.score >= minScoreThreshold {
+			filteredResults = append(filteredResults, r)
+		}
+	}
+	if len(filteredResults) == 0 {
+		log.Printf("[DEBUG SimpleVectorStore.Search] No results above threshold %.2f", minScoreThreshold)
+		return nil // Return empty instead of noisy results
+	}
+	results = filteredResults
+
 	// Take top k
 	if len(results) > k {
 		results = results[:k]
