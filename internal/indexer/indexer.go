@@ -426,6 +426,8 @@ type SearchResult struct {
 
 // Search searches indexed documents and returns enriched results
 // mode: "semantic" for vector search, "keyword" for substring match, "hybrid" for both
+// Uses Weighted Linear Combination: Score = α×Schild + (1-α)×Sparent
+// α = 0.7 (70% child vector, 30% parent BM25)
 func (idx *Indexer) Search(query string, k int, mode string) []SearchResult {
 	log.Printf("[DEBUG Indexer.Search] Query: %q, mode: %s", query, mode)
 	
@@ -433,21 +435,180 @@ func (idx *Indexer) Search(query string, k int, mode string) []SearchResult {
 	if mode == "" {
 		mode = "semantic"
 	}
-	
+
 	var semanticResults, keywordResults []SearchResult
 	
-	// Semantic search (vector-based)
+	// Semantic search (vector-based with parent-child weighted scoring)
 	if mode == "semantic" || mode == "hybrid" {
-		semanticResults = idx.searchSemantic(query, k)
+		semanticResults = idx.searchSemanticWeighted(query, k)
 	}
-	
+
 	// Keyword search (substring match)
 	if mode == "keyword" || mode == "hybrid" {
 		keywordResults = idx.searchKeyword(query, k)
 	}
-	
+
 	// Merge results
 	return idx.mergeResults(query, semanticResults, keywordResults, mode)
+}
+
+// searchSemanticWeighted performs vector search with parent-child weighted scoring
+// Final Score = α×Schild + (1-α)×Sparent
+// α = 0.7 (70% child, 30% parent)
+func (idx *Indexer) searchSemanticWeighted(query string, k int) []SearchResult {
+	const alpha = 0.7 // Weight for child score
+	
+	vec, err := idx.embedder.Embed(query)
+	if err != nil {
+		log.Printf("[DEBUG Indexer.searchSemanticWeighted] Embed error: %v", err)
+		return nil
+	}
+
+	log.Printf("[DEBUG Indexer.searchSemanticWeighted] Query vec dim=%d", len(vec))
+	results := idx.embedder.Search(vec, k*3) // Get more results for re-ranking
+
+	log.Printf("[DEBUG Indexer.searchSemanticWeighted] Got %d raw results", len(results))
+
+	// Group child results by parent
+	type childResult struct {
+		chunkID string
+		child   Chunk
+		schild  float64
+	}
+	
+	parentChildren := make(map[string][]childResult)
+	
+	for _, r := range results {
+		chunkID := r.Value
+		chunk, ok := idx.chunkMap[chunkID]
+		if !ok {
+			continue
+		}
+		
+		// Skip parent chunks (not children)
+		if chunk.ParentID == "" {
+			continue
+		}
+		
+		schild := float64(r.Relevance)
+		
+		parentChildren[chunk.ParentID] = append(parentChildren[chunk.ParentID], childResult{
+			chunkID: chunkID,
+			child:   chunk,
+			schild:  schild,
+		})
+	}
+
+	// Calculate weighted scores for each parent
+	type scoredParent struct {
+		parentID    string
+		parent      Chunk
+		children    []childResult
+		schildMax   float64  // Best child vector score
+		sparent     float64  // Parent BM25 score
+		finalScore  float64  // Weighted combination
+	}
+	
+	var scoredParents []scoredParent
+	
+	for parentID, children := range parentChildren {
+		parent, ok := idx.parentMap[parentID]
+		if !ok {
+			continue
+		}
+		
+		// Calculate parent BM25 score (simplified: keyword frequency)
+		sparent := calculateBM25(parent.Sentence, query)
+		
+		// Find max child score
+		var schildMax float64
+		for _, c := range children {
+			if c.schild > schildMax {
+				schildMax = c.schild
+			}
+		}
+		
+		// Weighted Linear Combination: α×Schild + (1-α)×Sparent
+		// Normalize scores to 0-1 range first
+		schildNorm := schildMax // Already 0-1 from cosine similarity
+		sparentNorm := sparant  // Normalize BM25 to 0-1
+		
+		finalScore := alpha*schildNorm + (1-alpha)*sparentNorm
+		
+		scoredParents = append(scoredParents, scoredParent{
+			parentID:   parentID,
+			parent:     parent,
+			children:   children,
+			schildMax:  schildMax,
+			sparent:    sparant,
+			finalScore: finalScore,
+		})
+	}
+	
+	// Sort by final score descending
+	sort.Slice(scoredParents, func(i, j int) bool {
+		return scoredParents[i].finalScore > scoredParents[j].finalScore
+	})
+	
+	// Build final results (return parent content with child match info)
+	var out []SearchResult
+	for i, p := range scoredParents {
+		if i >= k {
+			break
+		}
+		
+		// Find best child match for this parent
+		var bestChild childResult
+		for _, c := range p.children {
+			if bestChild.chunkID == "" || c.schild > bestChild.schild {
+				bestChild = c
+			}
+		}
+		
+		log.Printf("[DEBUG] Parent %s: schild=%.4f, sparant=%.4f, final=%.4f", 
+			p.parentID, p.schildMax, p.sparent, p.finalScore)
+		
+		extract := boldKeyword(p.parent.Sentence, query)
+		
+		out = append(out, SearchResult{
+			Index:     i + 1,
+			ChunkID:   bestChild.chunkID,
+			Path:      p.parent.Source,
+			Title:     p.parent.Source,
+			Extract:   extract,
+			Location:  findLocation(bestChild.chunkID, p.parent.Source),
+			Score:     p.finalScore,
+			IsKeyword: false,
+		})
+	}
+	
+	return out
+}
+
+// calculateBM25 calculates a simplified BM25 score for a document
+// Returns normalized score between 0 and 1
+func calculateBM25(doc, query string) float64 {
+	docLower := strings.ToLower(doc)
+	queryLower := strings.ToLower(query)
+	
+	// Simple term frequency approach (simplified BM25)
+	words := strings.Fields(queryLower)
+	tf := 0
+	for _, word := range words {
+		tf += strings.Count(docLower, word)
+	}
+	
+	// Normalize by document length (longer docs can have more matches)
+	docLen := float64(len(strings.Fields(docLower)))
+	if docLen == 0 {
+		return 0
+	}
+	
+	// IDF would need collection stats, so we use simple TF normalization
+	// Score = tf / (tf + 1) to cap at 1.0
+	score := float64(tf) / (float64(tf) + 1)
+	
+	return score
 }
 
 // searchSemantic performs vector-based semantic search
