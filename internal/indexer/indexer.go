@@ -29,6 +29,7 @@ type Indexer struct {
 	// Store chunks with embeddings for export
 	storedChunks []Chunk
 	chunkMap     map[string]Chunk // chunkID -> Chunk for lookup during search
+	parentMap    map[string]Chunk // parentID -> Parent Chunk for parent-child retrieval
 	docCount     int              // total chunks
 	fileCount    int              // number of files indexed
 }
@@ -45,6 +46,7 @@ func NewIndexer(embedder interface {
 		index:      search.NewIndex[string](),
 		embedder:   embedder,
 		chunkMap:   make(map[string]Chunk),
+		parentMap:  make(map[string]Chunk),
 	}
 }
 
@@ -113,38 +115,67 @@ func (idx *Indexer) indexFile(path string) (int, error) {
 	title := extractTitle(path)
 	docID := filepath.Base(path)
 
-	// Split content into sentences for better search granularity
-	sentences := splitIntoSentences(content)
-	log.Printf("Indexing %s: split into %d sentences", path, len(sentences))
+	// Parent-Child Chunking Strategy:
+	// 1. Split into parent chunks (~1000 tokens each)
+	// 2. Split each parent into child chunks (~150 tokens each)
+	// 3. Embed child chunks, store parent reference
 
-	// Generate embedding for each sentence and add to index
-	for i, sentence := range sentences {
-		vec, err := idx.embedder.Embed(sentence)
-		if err != nil {
-			log.Printf("Warning: failed to embed sentence from %s: %v", path, err)
-			continue
-		}
+	// First, split into parent chunks (by paragraphs/sections)
+	parentChunks := splitIntoParentChunks(content)
+	log.Printf("Indexing %s: split into %d parent chunks", path, len(parentChunks))
 
-		// Add to search index with path as ID
-		chunkID := fmt.Sprintf("%s#%d", docID, i)
-		idx.embedder.AddDocument(chunkID, vec, title+" | "+sentence)
-		idx.docCount++
+	childCount := 0
 
-		// Store chunk for export and lookup
-		chunk := Chunk{
-			ID:        chunkID,
+	// Process each parent chunk
+	for parentIdx, parentContent := range parentChunks {
+		parentID := fmt.Sprintf("%s#parent#%d", docID, parentIdx)
+
+		// Split parent into child chunks
+		childChunks := splitIntoChildChunks(parentContent)
+		log.Printf("  Parent %d: %d child chunks", parentIdx, len(childChunks))
+
+		// Store parent chunk
+		parentChunk := Chunk{
+			ID:        parentID,
 			Source:    title,
-			Sentence:  sentence,
-			Embedding: vec,
+			Sentence:  parentContent,
+			ParentID:  "", // Parent has no parent
 		}
-		idx.storedChunks = append(idx.storedChunks, chunk)
-		idx.chunkMap[chunkID] = chunk
+		idx.parentMap[parentID] = parentChunk
+
+		// Embed each child chunk
+		for childIdx, childContent := range childChunks {
+			vec, err := idx.embedder.Embed(childContent)
+			if err != nil {
+				log.Printf("Warning: failed to embed child from %s: %v", path, err)
+				continue
+			}
+
+			// Child chunk ID references parent
+			childID := fmt.Sprintf("%s#child#%d#%d", docID, parentIdx, childIdx)
+			idx.embedder.AddDocument(childID, vec, title+" | "+childContent)
+			idx.docCount++
+			childCount++
+
+			// Store child chunk with parent reference
+			chunk := Chunk{
+				ID:        childID,
+				Source:    title,
+				Sentence:  childContent,
+				ParentID:  parentID,
+				Embedding: vec,
+			}
+			idx.storedChunks = append(idx.storedChunks, chunk)
+			idx.chunkMap[childID] = chunk
+		}
 	}
+
+	log.Printf("Indexing %s: total %d child chunks indexed", path, childCount)
 
 	// Increment file count after successful indexing
 	idx.fileCount++
 
-	return len(sentences), nil
+	return childCount, nil
 }
 
 func extractPDFText(path string) (string, error) {
@@ -273,6 +304,94 @@ func splitIntoSentences(text string) []string {
 	return result
 }
 
+// splitIntoParentChunks splits text into larger parent chunks (~1000 tokens / ~5000 chars)
+// Splits on double newlines (paragraphs) or headers
+func splitIntoParentChunks(text string) []string {
+	if len(text) == 0 {
+		return nil
+	}
+
+	// Normalize whitespace
+	text = strings.Join(strings.Fields(text), " ")
+
+	// Split on double newlines (paragraph breaks) or markdown headers
+	// This preserves logical sections as parent chunks
+	re := regexp.MustCompile(`(?m)(?:\n\n+|#+\s)`)
+	parts := re.Split(text, -1)
+
+	var chunks []string
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if len(trimmed) > 50 { // Skip very small fragments
+			chunks = append(chunks, trimmed)
+		}
+	}
+
+	if len(chunks) == 0 && len(text) > 0 {
+		return []string{text}
+	}
+
+	// If chunks are too large, split further
+	var result []string
+	for _, chunk := range chunks {
+		// Split large chunks into ~5000 char pieces
+		if len(chunk) > 5000 {
+			for i := 0; i < len(chunk); i += 4500 {
+				end := i + 4500
+				if end > len(chunk) {
+					end = len(chunk)
+				}
+				result = append(result, chunk[i:end])
+			}
+		} else {
+			result = append(result, chunk)
+		}
+	}
+
+	return result
+}
+
+// splitIntoChildChunks splits parent chunk into smaller child chunks (~150 tokens / ~800 chars)
+// Each child is 1-2 sentences for precise vector matching
+func splitIntoChildChunks(parentText string) []string {
+	if len(parentText) == 0 {
+		return nil
+	}
+
+	// Use the existing sentence splitting logic
+	sentences := splitIntoSentences(parentText)
+
+	// Merge sentences into chunks of ~800 chars (~150 tokens)
+	var chunks []string
+	var current strings.Builder
+
+	for _, sentence := range sentences {
+		if current.Len()+len(sentence)+1 > 800 {
+			// Current chunk is full, save it
+			if current.Len() > 0 {
+				chunks = append(chunks, current.String())
+				current.Reset()
+			}
+		}
+		if current.Len() > 0 {
+			current.WriteString(". ")
+		}
+		current.WriteString(sentence)
+	}
+
+	// Don't forget the last chunk
+	if current.Len() > 0 {
+		chunks = append(chunks, current.String())
+	}
+
+	// If we only have one chunk, just return it
+	if len(chunks) == 0 {
+		return []string{parentText}
+	}
+
+	return chunks
+}
+
 // SaveIndex saves the index to a file
 func (idx *Indexer) SaveIndex(path string) error {
 	return idx.index.WriteFile(path)
@@ -372,7 +491,16 @@ func (idx *Indexer) searchSemantic(query string, k int) []SearchResult {
 			}
 		}
 
-		extract := boldKeyword(chunk.Sentence, query)
+		// Parent-Child: Get parent content for context
+		contentToShow := chunk.Sentence
+		if chunk.ParentID != "" {
+			if parent, ok := idx.parentMap[chunk.ParentID]; ok {
+				contentToShow = parent.Sentence
+				log.Printf("[DEBUG] Using parent content for child %s", chunkID)
+			}
+		}
+
+		extract := boldKeyword(contentToShow, query)
 		location := findLocation(chunkID, chunk.Source)
 
 		out = append(out, SearchResult{
@@ -401,11 +529,19 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		// Check if query appears in chunk content
 		contentLower := strings.ToLower(chunk.Sentence)
 		if strings.Contains(contentLower, queryLower) {
-			extract := boldKeyword(chunk.Sentence, query)
+			// Parent-Child: Get parent content for context
+			contentToShow := chunk.Sentence
+			if chunk.ParentID != "" {
+				if parent, ok := idx.parentMap[chunk.ParentID]; ok {
+					contentToShow = parent.Sentence
+				}
+			}
+			
+			extract := boldKeyword(contentToShow, query)
 			location := findLocation(chunkID, chunk.Source)
 			
 			// Position determines rank (earlier = better rank)
-			pos := strings.Index(contentLower, queryLower)
+			pos := strings.Index(strings.ToLower(contentToShow), queryLower)
 			
 			results = append(results, SearchResult{
 				ChunkID:   chunkID,
@@ -489,7 +625,7 @@ func (idx *Indexer) mergeResults(query string, semantic, keyword []SearchResult,
 	// Build final results
 	var out []SearchResult
 	for i, r := range results {
-		// Look up chunk info
+		// Look up chunk info (child chunk)
 		chunk, ok := idx.chunkMap[r.chunkID]
 		if !ok {
 			continue
@@ -499,8 +635,16 @@ func (idx *Indexer) mergeResults(query string, semantic, keyword []SearchResult,
 		// If both, show as keyword since keyword is more precise for exact matches
 		isKeyword := r.keyword
 		
+		// Parent-Child: Get parent content for context
+		contentToShow := chunk.Sentence
+		if chunk.ParentID != "" {
+			if parent, ok := idx.parentMap[chunk.ParentID]; ok {
+				contentToShow = parent.Sentence
+			}
+		}
+		
 		// Bold the keyword in extract
-		extract := boldKeyword(chunk.Sentence, query)
+		extract := boldKeyword(contentToShow, query)
 		
 		out = append(out, SearchResult{
 			Index:     i + 1,

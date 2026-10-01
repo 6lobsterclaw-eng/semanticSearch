@@ -9,10 +9,11 @@ import (
 
 // Chunk represents a single indexed sentence with its embedding
 type Chunk struct {
-	ID        string
-	Source    string
-	Sentence  string
-	Embedding []float32
+	ID          string
+	Source      string
+	Sentence    string
+	ParentID    string  // Reference to parent chunk for parent-child chunking
+	Embedding   []float32
 }
 
 // ExportedIndex represents the full exported index data
