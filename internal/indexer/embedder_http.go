@@ -11,6 +11,7 @@ import (
 	"math"
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -45,7 +46,18 @@ func (s *SimpleVectorStore) Add(id string, vec search.Vector, content string) {
 		vector:  vec,
 		content: content,
 	})
-	log.Printf("[DEBUG SimpleVectorStore] Added vector: id=%q, total vectors=%d", id, len(s.vectors))
+	// DEBUG: Log vector first 10 values when adding
+	if len(vec) > 0 {
+		first10 := vec
+		if len(first10) > 10 {
+			first10 = first10[:10]
+		}
+		log.Printf("[DEBUG SimpleVectorStore] Added: id=%q, total=%d, vec first10=%v, content=%q", 
+			id, len(s.vectors), first10, content)
+	} else {
+		log.Printf("[DEBUG SimpleVectorStore] Added: id=%q, total=%d, vec=EMPTY, content=%q", 
+			id, len(s.vectors), content)
+	}
 }
 
 func (s *SimpleVectorStore) Search(query search.Vector, k int) []search.Result[string] {
@@ -53,6 +65,15 @@ func (s *SimpleVectorStore) Search(query search.Vector, k int) []search.Result[s
 	defer s.mu.RUnlock()
 
 	log.Printf("[DEBUG SimpleVectorStore.Search] Searching in %d vectors", len(s.vectors))
+	
+	// DEBUG: Log query vector first 10 values
+	if len(query) > 0 {
+		first10 := query
+		if len(first10) > 10 {
+			first10 = first10[:10]
+		}
+		log.Printf("[DEBUG SimpleVectorStore.Search] Query vector first10: %v", first10)
+	}
 
 	type scoredResult struct {
 		id        string
@@ -69,6 +90,42 @@ func (s *SimpleVectorStore) Search(query search.Vector, k int) []search.Result[s
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].score > results[j].score
 	})
+
+	// DEBUG: Log top 20 raw scores before filtering
+	log.Printf("[DEBUG] Top 20 raw scores before filtering:")
+	hasBrainInIndex := false
+	for i := 0; i < len(results) && i < 20; i++ {
+		// Try to find content for this ID
+		content := ""
+		for _, v := range s.vectors {
+			if v.id == results[i].id {
+				// Show first 80 chars of content
+				if len(v.content) > 80 {
+					content = v.content[:80] + "..."
+				} else {
+					content = v.content
+				}
+				// Check if content has "brain"
+				if strings.Contains(strings.ToLower(v.content), "brain") {
+					hasBrainInIndex = true
+					log.Printf("[DEBUG BRAIN FOUND] %d: id=%q score=%.4f content=%q", i+1, results[i].id, results[i].score, content)
+				}
+				break
+			}
+		}
+		if !strings.Contains(strings.ToLower(content), "brain") {
+			log.Printf("[DEBUG]   %d: id=%q score=%.4f content=%q", i+1, results[i].id, results[i].score, content)
+		}
+	}
+	if !hasBrainInIndex {
+		log.Printf("[DEBUG] WARNING: No indexed content contains 'brain'!")
+		// Search for any content with brain
+		for _, v := range s.vectors {
+			if strings.Contains(strings.ToLower(v.content), "brain") {
+				log.Printf("[DEBUG] Found 'brain' in id=%q content=%q", v.id, v.content)
+			}
+		}
+	}
 
 	// Apply smart threshold to filter out noise
 	// Key insight: In 1024D space, random vectors have expected similarity ~0.5
