@@ -23,13 +23,8 @@ type SimpleVectorStore struct {
 	vectors []vectorEntry
 }
 
-type vectorEntry struct {
-	id      string
-	vector  []float32
-	content string
-}
-
 func NewSimpleVectorStore() *SimpleVectorStore {
+	log.Println("[DEBUG] Creating new SimpleVectorStore")
 	return &SimpleVectorStore{
 		vectors: make([]vectorEntry, 0),
 	}
@@ -43,11 +38,14 @@ func (s *SimpleVectorStore) Add(id string, vec search.Vector, content string) {
 		vector:  vec,
 		content: content,
 	})
+	log.Printf("[DEBUG SimpleVectorStore] Added vector: id=%q, total vectors=%d", id, len(s.vectors))
 }
 
 func (s *SimpleVectorStore) Search(query search.Vector, k int) []search.Result[string] {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
+	log.Printf("[DEBUG SimpleVectorStore.Search] Searching in %d vectors", len(s.vectors))
 
 	type scoredResult struct {
 		id        string
