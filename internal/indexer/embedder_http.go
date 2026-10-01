@@ -17,6 +17,13 @@ import (
 	"github.com/kelindar/search"
 )
 
+// vectorEntry stores a single vector with its metadata
+type vectorEntry struct {
+	id      string
+	vector  []float32
+	content string
+}
+
 // SimpleVectorStore is a simple in-memory vector store with cosine similarity
 type SimpleVectorStore struct {
 	mu      sync.RWMutex
