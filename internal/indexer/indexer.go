@@ -342,14 +342,6 @@ func (idx *Indexer) Search(query string, k int) []SearchResult {
 			}
 		}
 
-		// FIX: Filter out results where chunk doesn't contain the query keyword
-		// This handles the case where semantic search returns ~0.5 for non-matches
-		containsKeyword := strings.Contains(strings.ToLower(chunk.Sentence), strings.ToLower(query))
-		if !containsKeyword {
-			log.Printf("[DEBUG Indexer.Search] Skipping result %d: no keyword match for %q in %q", i+1, query, chunk.Sentence)
-			continue
-		}
-
 		// Extract sentence with keyword bolded
 		extract := boldKeyword(chunk.Sentence, query)
 
