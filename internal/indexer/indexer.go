@@ -334,16 +334,16 @@ func splitIntoParentChunks(text string) []string {
 	// If chunks are too large, split further
 	var result []string
 	for _, chunk := range chunks {
-		// Split large chunks into ~5000 char pieces
-		if len(chunk) > 5000 {
-			for i := 0; i < len(chunk); i += 4500 {
-				end := i + 4500
+		// Split large chunks into ~2000 char pieces (parent chunk size)
+		if len(chunk) > 2000 {
+			for i := 0; i < len(chunk); i += 1800 {
+				end := i + 1800
 				if end > len(chunk) {
 					end = len(chunk)
 				}
 				result = append(result, chunk[i:end])
 			}
-		} else {
+		} else if len(chunk) > 0 {
 			result = append(result, chunk)
 		}
 	}
@@ -361,12 +361,12 @@ func splitIntoChildChunks(parentText string) []string {
 	// Use the existing sentence splitting logic
 	sentences := splitIntoSentences(parentText)
 
-	// Merge sentences into chunks of ~800 chars (~150 tokens)
+	// Merge sentences into chunks of ~200 chars (~1-2 sentences, ~40 tokens)
 	var chunks []string
 	var current strings.Builder
 
 	for _, sentence := range sentences {
-		if current.Len()+len(sentence)+1 > 800 {
+		if current.Len()+len(sentence)+1 > 200 {
 			// Current chunk is full, save it
 			if current.Len() > 0 {
 				chunks = append(chunks, current.String())
