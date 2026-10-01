@@ -316,10 +316,12 @@ func (idx *Indexer) Search(query string, k int) []SearchResult {
 	for i, r := range results {
 		// Extract chunkID from the result value (format: "filename#index")
 		chunkID := r.Value
+		log.Printf("Search result %d: chunkID=%q", i+1, chunkID)
 
 		// Look up chunk in our map
 		chunk, ok := idx.chunkMap[chunkID]
 		if !ok {
+			log.Printf("Chunk not found in map: %q", chunkID)
 			// Fallback: parse from the embedded text if not in map
 			parts := strings.Split(r.Value, " | ")
 			title := ""
