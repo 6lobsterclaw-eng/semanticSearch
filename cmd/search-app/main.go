@@ -493,14 +493,9 @@ func main() {
             if (!indexed) { alert('Please index a folder first'); return; }
             
             document.getElementById('results').innerHTML = '<div class="info">Searching...</div>';
-            console.log('Starting search for:', query);
             fetch('/search?q=' + encodeURIComponent(query))
-                .then(function(response) {
-                    console.log('Response status:', response.status);
-                    return response.json();
-                })
+                .then(function(response) { return response.json(); })
                 .then(function(d) {
-                    console.log('Search data:', JSON.stringify(d));
                     if (d.error) {
                         document.getElementById('results').innerHTML = '<div class="error">Error: ' + d.error + '</div>';
                         return;
@@ -525,7 +520,6 @@ func main() {
                     document.getElementById('results').innerHTML = html;
                 })
                 .catch(function(err) {
-                    console.error('Search error:', err);
                     document.getElementById('results').innerHTML = '<div class="error">Error: ' + err + '</div>';
                 });
         }
@@ -708,9 +702,7 @@ func main() {
 			return
 		}
 
-		log.Printf("Searching for: %s", query)
 		results := idx.Search(query, 10)
-		log.Printf("Search returned %d results", len(results))
 
 		data, _ := json.Marshal(results)
 		fmt.Fprint(w, string(data))
