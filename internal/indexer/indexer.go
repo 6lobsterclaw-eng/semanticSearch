@@ -355,7 +355,7 @@ func (idx *Indexer) Search(query string, k int) []SearchResult {
 	return out
 }
 
-// boldKeyword wraps the keyword in ** for bold display
+// boldKeyword wraps the keyword in <b> tags for HTML bold display
 func boldKeyword(sentence, keyword string) string {
 	lowerSentence := strings.ToLower(sentence)
 	lowerKeyword := strings.ToLower(keyword)
@@ -370,21 +370,12 @@ func boldKeyword(sentence, keyword string) string {
 		return sentence
 	}
 
-	// Find sentence boundaries around keyword
-	start := findSentenceStart(sentence, pos)
-	end := findSentenceEnd(sentence, pos+len(keyword))
+	// Wrap keyword in <b> tags
+	before := sentence[:pos]
+	kw := sentence[pos:pos+len(keyword)]
+	after := sentence[pos+len(keyword):]
 
-	// Get the extract
-	extract := sentence[start:end]
-	if len(extract) > 300 {
-		extract = extract[:300] + "..."
-	}
-
-	// Bold the keyword (case-insensitive)
-	re := regexp.MustCompile(`(?i)` + regexp.QuoteMeta(keyword))
-	extract = re.ReplaceAllString(extract, "**$0**")
-
-	return extract
+	return before + "<b>" + kw + "</b>" + after
 }
 
 // findSentenceStart finds the start of the sentence containing pos
@@ -413,16 +404,16 @@ func findSentenceEnd(content string, pos int) int {
 	return len(content)
 }
 
-// findLocation estimates page number for PDF or row for MD/TXT
+// findLocation returns location info: filename and page/line number
 func findLocation(sentence, source string) string {
-	// Estimate based on sentence length and typical page size (~3000 chars)
-	// This is a rough estimate; real implementation would track pages during extraction
-	lines := strings.Count(sentence, "\n") + 1
+	// Get just the filename from source path
+	filename := filepath.Base(source)
 
 	if strings.HasSuffix(strings.ToLower(source), ".pdf") {
-		// Rough estimate: assume 3000 chars per page
-		return "Page 1" // Would need proper page tracking
+		return filename + " - Page 1" // Would need proper page tracking
 	}
 
-	return fmt.Sprintf("Row %d", lines)
+	// For MD/TXT, estimate line number based on sentence position
+	// This is rough - real implementation would track line numbers during extraction
+	return filename + " - Line ~1"
 }
