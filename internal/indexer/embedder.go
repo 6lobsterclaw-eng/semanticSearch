@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 
 	"github.com/kelindar/search"
 	"github.com/kelindar/search/llama"
@@ -32,10 +33,21 @@ func NewEmbedder(modelPath string) (*Embedder, error) {
 		return nil, errors.Join(ErrEmbedderInit, err)
 	}
 
+	// Detect embedding dimension from model name
+	// Default to 1024 for Qwen3-Embedding-0.6B
+	dim := 1024
+	if strings.Contains(strings.ToLower(modelPath), "384") {
+		dim = 384
+	} else if strings.Contains(strings.ToLower(modelPath), "768") {
+		dim = 768
+	} else if strings.Contains(strings.ToLower(modelPath), "1024") {
+		dim = 1024
+	}
+
 	return &Embedder{
 		model: model,
 		index: search.NewIndex[string](),
-		dim:   384, // Standard dimension for embedding models
+		dim:   dim,
 	}, nil
 }
 
