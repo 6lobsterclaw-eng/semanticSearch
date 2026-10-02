@@ -729,15 +729,17 @@ func main() {
 					resp.Body.Close()
 					if resp.StatusCode == 200 {
 						// Create embedder
-						emb, err := indexer.NewHTTPEmbedder(serverURL, modelPath)
-						if err != nil {
-							serverStatus = "error"
-							serverStatusMsg = fmt.Sprintf("Embedder error: %v", err)
-							return
-						}
-						embedder = emb
-						idx = indexer.NewIndexer(emb)
-						// Wire LLM client if already started
+							emb, err := indexer.NewHTTPEmbedder(serverURL, modelPath)
+							if err != nil {
+								serverStatus = "error"
+								serverStatusMsg = fmt.Sprintf("Embedder error: %v", err)
+								return
+							}
+							embedder = emb
+							idx = indexer.NewIndexer(emb)
+							// Initialize Bleve index for fuzzy keyword search
+							idx.InitBleveIndex()
+							// Wire LLM client if already started
 						if llmClient != nil {
 							idx.SetLLMClient(llmClient)
 							log.Println("LLM client wired to indexer")

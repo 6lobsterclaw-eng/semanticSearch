@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/blevesearch/bleve/v2"
 	"github.com/ledongthuc/pdf"
 	"github.com/gomarkdown/markdown"
 	"github.com/gomarkdown/markdown/parser"
@@ -20,6 +21,7 @@ import (
 // Indexer orchestrates document indexing using an embedder
 type Indexer struct {
 	index    *search.Index[string]
+	bleveIdx bleve.Index // For fuzzy keyword search
 	embedder interface {
 		Embed(string) (search.Vector, error)
 		AddDocument(string, search.Vector, string)
@@ -53,6 +55,15 @@ func NewIndexer(embedder interface {
 		chunkMap:   make(map[string]Chunk),
 		parentMap:  make(map[string]Chunk),
 	}
+}
+
+// InitBleveIndex initializes a Bleve index for fuzzy keyword search
+func (idx *Indexer) InitBleveIndex() error {
+	// Create in-memory index with default analyzer (supports fuzziness)
+	idx.bleveIdx, _ = bleve.NewMemUsing(nil, nil)
+	
+	log.Printf("[INFO] Bleve index initialized for fuzzy keyword search")
+	return nil
 }
 
 // SetLLMClient sets the LLM client for question generation
@@ -242,6 +253,16 @@ func (idx *Indexer) indexFile(path string) (int, error) {
 			}
 			idx.storedChunks = append(idx.storedChunks, chunk)
 			idx.chunkMap[childID] = chunk
+			
+			// Index in Bleve for fuzzy keyword search
+			if idx.bleveIdx != nil {
+				doc := map[string]interface{}{
+					"id":       childID,
+					"source":   title,
+					"content":  childContent,
+				}
+				idx.bleveIdx.Index(childID, doc)
+			}
 		}
 	}
 
@@ -805,22 +826,76 @@ func (idx *Indexer) searchSemantic(query string, k int) []SearchResult {
 	return out
 }
 
-// searchKeyword performs substring-based keyword search
+// searchKeyword performs fuzzy keyword search using Bleve with N-gram
 func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	log.Printf("[DEBUG Indexer.searchKeyword] Query: %q", query)
+	
+	if idx.bleveIdx == nil {
+		log.Printf("[WARN] Bleve index not initialized, falling back to substring")
+		return idx.searchKeywordFallback(query, k)
+	}
+	
+	// Use Bleve fuzzy search with MatchQuery
+	matchQuery := bleve.NewMatchQuery(query)
+	matchQuery.SetFuzziness(1) // Allow 1 edit distance for typos
+	
+	searchRequest := bleve.NewSearchRequest(matchQuery)
+	searchRequest.Size = k * 2 // Get more results
+	searchRequest.From = 0
+	
+	// Execute fuzzy search
+	searchResult, err := idx.bleveIdx.Search(searchRequest)
+	if err != nil {
+		log.Printf("[ERROR] Bleve search error: %v", err)
+		return idx.searchKeywordFallback(query, k)
+	}
+	
+	log.Printf("[DEBUG Indexer.searchKeyword] Bleve found %d results", len(searchResult.Hits))
+	
+	var results []SearchResult
+	for i, hit := range searchResult.Hits {
+		chunkID := hit.ID
+		
+		// Get chunk from our map
+		chunk, ok := idx.chunkMap[chunkID]
+		if !ok {
+			continue
+		}
+		
+		extract := boldKeyword(chunk.Sentence, query)
+		location := findLocation(chunkID, chunk.Source)
+		
+		results = append(results, SearchResult{
+			ChunkID:   chunkID,
+			Path:      chunk.Source,
+			Title:     chunk.Source,
+			Extract:   extract,
+			Location:  location,
+			Score:     float64(k) - float64(i), // Higher score for better matches
+			IsKeyword: true,
+		})
+	}
+	
+	// Assign proper indices
+	for i := range results {
+		results[i].Index = i + 1
+	}
+	
+	return results
+}
+
+// searchKeywordFallback uses simple substring matching if Bleve is not available
+func (idx *Indexer) searchKeywordFallback(query string, k int) []SearchResult {
+	log.Printf("[DEBUG Indexer.searchKeywordFallback] Query: %q", query)
 	
 	queryLower := strings.ToLower(query)
 	var results []SearchResult
 	
 	for chunkID, chunk := range idx.chunkMap {
-		// Check if query appears in chunk content
 		contentLower := strings.ToLower(chunk.Sentence)
 		if strings.Contains(contentLower, queryLower) {
-			// Show child chunk extract (not parent)
 			extract := boldKeyword(chunk.Sentence, query)
 			location := findLocation(chunkID, chunk.Source)
-			
-			// Position determines rank (earlier = better rank)
 			pos := strings.Index(contentLower, queryLower)
 			
 			results = append(results, SearchResult{
@@ -829,23 +904,21 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 				Title:     chunk.Source,
 				Extract:   extract,
 				Location:  location,
-				Score:     float64(pos), // Use position as score (lower = better)
+				Score:     float64(pos),
 				IsKeyword: true,
 			})
 		}
 	}
 	
-	// Sort by position (earlier = better rank = lower score)
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].Score < results[j].Score
 	})
 	
-	// Assign proper indices
 	for i := range results {
 		results[i].Index = i + 1
 	}
 	
-	log.Printf("[DEBUG Indexer.searchKeyword] Found %d keyword matches", len(results))
+	log.Printf("[DEBUG Indexer.searchKeywordFallback] Found %d keyword matches", len(results))
 	return results
 }
 
