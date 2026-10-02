@@ -578,12 +578,16 @@ func main() {
             fetch(url)
                 .then(function(response) { return response.json(); })
                 .then(function(d) {
+                    if (!d) {
+                        document.getElementById('results').innerHTML = '<div class="error">Server returned empty response. Please try again.</div>';
+                        return;
+                    }
                     if (d.error) {
                         document.getElementById('results').innerHTML = '<div class="error">Error: ' + d.error + '</div>';
                         return;
                     }
                     if (!d || d.length == 0) {
-                        document.getElementById('results').innerHTML = '<div>No results found</div>';
+                        document.getElementById('results').innerHTML = '<div>No results found. Try different keywords or check if files are indexed.</div>';
                         return;
                     }
                     // Build results table
