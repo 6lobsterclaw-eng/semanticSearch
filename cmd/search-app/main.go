@@ -138,10 +138,6 @@ func main() {
 <body>
     <h1>Semantic Search</h1>
     
-    <div class="auto-detect">
-        <strong>GGUF Files:</strong> <span id="serverStatus">Scanning...</span>
-    </div>
-    
     <div class="step">
         <h3>Step 1: Configure Models</h3>
         
@@ -255,9 +251,6 @@ func main() {
                             llmSelect.appendChild(opt2);
                         }
                     });
-                    
-                    // Show GGUF file count
-                    document.getElementById('serverStatus').textContent = d.gguf.length + ' file(s) found';
                     
                     if (d.gguf.length > 0) {
                         document.getElementById('startServerBtn').disabled = false;
