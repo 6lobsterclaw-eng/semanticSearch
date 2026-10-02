@@ -139,18 +139,19 @@ func main() {
     <h1>Semantic Search</h1>
     
     <div class="auto-detect">
-        <strong>Auto-detect:</strong> <span id="serverStatus">Scanning...</span>
+        <strong>GGUF Files:</strong> <span id="serverStatus">Scanning...</span>
     </div>
     
     <div class="step">
         <h3>Step 1: Configure Models</h3>
         
-        <div style="margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+        <div style="padding: 10px; background: #f8f9fa; border-radius: 5px;">
             <strong>Embedding Model</strong> (for semantic search)<br>
-            <select id="modelSelect" style="width: 300px; margin-top: 5px;">
+            <select id="modelSelect" style="width: 300px; margin-top: 5px;" onchange="updateEmbedderStatus()">
                 <option value="">-- Select GGUF Model --</option>
             </select>
-            <button id="startServerBtn" onclick="startServer()" disabled>Start Server</button>
+            <button id="startServerBtn" onclick="startServer()" disabled>Start</button>
+            <span id="embedderStatus" style="margin-left: 5px;">●</span>
         </div>
         
         <div style="padding: 10px; background: #f8f9fa; border-radius: 5px;">
@@ -158,11 +159,9 @@ func main() {
             <select id="llmModelSelect" style="width: 300px; margin-top: 5px;">
                 <option value="">-- Select GGUF Model --</option>
             </select>
-            <button id="startLLMBtn" onclick="startLLMServer()" disabled>Start LLM Server</button>
-            <span id="llmStatus" style="margin-left: 10px; color: #666;"></span>
+            <button id="startLLMBtn" onclick="startLLMServer()" disabled>Start</button>
+            <span id="llmStatus" style="margin-left: 5px;">●</span>
         </div>
-        
-        <div id="serverInfo"></div>
     </div>
     
     <div class="step">
@@ -205,8 +204,29 @@ func main() {
         var serverRunning = false;
         var indexed = false;
         
+        // Set status dot colors
+        function setEmbedderStatus(color) {
+            var dot = document.getElementById('embedderStatus');
+            if (dot) {
+                dot.style.color = color;
+                dot.title = color === 'red' ? 'Unavailable' : color === 'orange' ? 'Loading' : 'Ready';
+            }
+        }
+        
+        function setLLMStatus(color) {
+            var dot = document.getElementById('llmStatus');
+            if (dot) {
+                dot.style.color = color;
+                dot.title = color === 'red' ? 'Unavailable' : color === 'orange' ? 'Loading' : 'Ready';
+            }
+        }
+        
         // Auto-detect on load
         window.onload = function() {
+            // Initialize dots as red (unavailable)
+            setEmbedderStatus('red');
+            setLLMStatus('red');
+            
             fetch('/detect')
                 .then(r => {
                     console.log('detect response:', r);
@@ -214,14 +234,6 @@ func main() {
                 })
                 .then(d => {
                     console.log('detect data:', d);
-                    var status = '';
-                    if (d.server) {
-                        status += 'llama-server.exe: FOUND ';
-                    } else {
-                        status += 'llama-server.exe: NOT FOUND ';
-                    }
-                    status += '| GGUF files: ' + d.gguf.length;
-                    document.getElementById('serverStatus').textContent = status;
                     
                     var select = document.getElementById('modelSelect');
                     var llmSelect = document.getElementById('llmModelSelect');
@@ -244,7 +256,10 @@ func main() {
                         }
                     });
                     
-                    if (d.server && d.gguf.length > 0) {
+                    // Show GGUF file count
+                    document.getElementById('serverStatus').textContent = d.gguf.length + ' file(s) found';
+                    
+                    if (d.gguf.length > 0) {
                         document.getElementById('startServerBtn').disabled = false;
                         document.getElementById('startLLMBtn').disabled = false;
                     }
@@ -258,8 +273,8 @@ func main() {
         function startServer() {
             var model = document.getElementById('modelSelect').value;
             if (!model) { alert('Please select a model'); return; }
-            
-            document.getElementById('serverInfo').innerHTML = '<div class="info">Starting embedding server...</div>';
+
+            setEmbedderStatus('orange');
             
             fetch('/startServer?model=' + encodeURIComponent(model))
                 .then(r => r.json())
@@ -268,7 +283,8 @@ func main() {
                         // Poll for status
                         pollServerStatus();
                     } else {
-                        document.getElementById('serverInfo').innerHTML = '<div class="error">Error: ' + d.error + '</div>';
+                        setEmbedderStatus('red');
+                        alert('Error: ' + d.error);
                     }
                 });
         }
@@ -277,18 +293,17 @@ func main() {
             var model = document.getElementById('llmModelSelect').value;
             if (!model) { alert('Please select a model'); return; }
             
-            document.getElementById('llmStatus').textContent = 'Starting...';
+            setLLMStatus('orange');
             
             fetch('/startLLMServer?model=' + encodeURIComponent(model))
                 .then(r => r.json())
                 .then(d => {
                     if (d.success) {
                         llmServerRunning = true;
-                        document.getElementById('llmStatus').textContent = 'Running on ' + d.url;
-                        document.getElementById('llmStatus').style.color = 'green';
+                        setLLMStatus('green');
                     } else {
-                        document.getElementById('llmStatus').textContent = 'Error: ' + d.error;
-                        document.getElementById('llmStatus').style.color = 'red';
+                        setLLMStatus('red');
+                        alert('Error: ' + d.error);
                     }
                 });
         }
@@ -297,13 +312,13 @@ func main() {
             fetch('/serverStatus')
                 .then(r => r.json())
                 .then(d => {
-                    document.getElementById('serverInfo').innerHTML = '<div class="info">' + d.message + '</div>';
                     if (d.status === 'ready') {
                         serverRunning = true;
-                        document.getElementById('serverInfo').innerHTML = '<div class="success">Server ready!</div>';
+                        setEmbedderStatus('green');
                     } else if (d.status === 'error') {
-                        document.getElementById('serverInfo').innerHTML = '<div class="error">Error: ' + d.message + '</div>';
+                        setEmbedderStatus('red');
                     } else if (d.status === 'starting') {
+                        setEmbedderStatus('orange');
                         setTimeout(pollServerStatus, 1000);
                     }
                 });
