@@ -17,6 +17,7 @@ type Embedder struct {
 	model *llama.Vectorizer
 	index *search.Index[string]
 	dim   int
+	count int // Track number of vectors
 }
 
 // NewEmbedder creates a new local embedder using GGUF model
@@ -48,6 +49,7 @@ func NewEmbedder(modelPath string) (*Embedder, error) {
 		model: model,
 		index: search.NewIndex[string](),
 		dim:   dim,
+		count: 0,
 	}, nil
 }
 
@@ -63,6 +65,7 @@ func (e *Embedder) Embed(text string) (search.Vector, error) {
 // AddDocument adds a document to the embedder's index
 func (e *Embedder) AddDocument(id string, vec search.Vector, content string) {
 	e.index.Add(vec, content)
+	e.count++
 }
 
 // Search searches the index
@@ -87,7 +90,7 @@ func (e *Embedder) Dim() int {
 
 // Size returns the number of vectors in the index
 func (e *Embedder) Size() int {
-	return e.index.Count()
+	return e.count
 }
 
 // Close releases resources
