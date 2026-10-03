@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/blevesearch/bleve/v2"
-	"github.com/blevesearch/bleve/v2/mapping"
+	bleveMapping "github.com/blevesearch/bleve/v2/mapping"
 	"github.com/ledongthuc/pdf"
 	"github.com/gomarkdown/markdown"
 	"github.com/gomarkdown/markdown/parser"
@@ -73,7 +73,7 @@ func (idx *Indexer) InitBleveIndex() error {
 	os.RemoveAll(indexPath)
 	
 	// Use concrete type to access DefaultAnalyzer
-	mapping := bleve.NewIndexMapping().(*mapping.IndexMappingImpl)
+	mapping := bleve.NewIndexMapping().(*bleveMapping.IndexMappingImpl)
 	var err error
 	
 	// First: Register custom edge n-gram token filter
@@ -916,14 +916,6 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 
 	log.Printf("[DEBUG] searchKeyword: query=%q, field=%q, index=%v", 
 		query, "content", idx.bleveIdx != nil)
-	
-	// Debug: Get and log the index mapping
-	if mapping := idx.bleveIdx.Mapping(); mapping != nil {
-		log.Printf("[DEBUG] Index mapping default analyzer: %q", mapping.DefaultAnalyzer)
-		if field, ok := mapping.Fields["content"]; ok {
-			log.Printf("[DEBUG] Content field analyzer: %v", field)
-		}
-	}
 	
 	searchRequest := bleve.NewSearchRequest(matchQuery)
 	searchRequest.Size = k * 2
