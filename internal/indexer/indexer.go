@@ -65,7 +65,7 @@ func NewIndexer(embedder interface {
 }
 
 // InitBleveIndex initializes a Bleve index with N-gram tokenization for fuzzy keyword search
-// Using NewNGramTokenizer for proper n-gram tokenization
+// Using ngram token filter for proper n-gram support
 func (idx *Indexer) InitBleveIndex() error {
 	// Use temp directory for disk-based index
 	indexPath := filepath.Join(os.TempDir(), "bleve_ngram_index")
@@ -76,26 +76,30 @@ func (idx *Indexer) InitBleveIndex() error {
 	// Create new index mapping
 	indexMapping := bleve.NewIndexMapping()
 	
-	// Step 1: Register the NGramTokenizer FIRST (before analyzer that uses it)
-	ngramTokenizer := map[string]interface{}{
-		"type":     "ngram",
-		"min_gram": float64(3),
-		"max_gram": float64(10),
+	// Step 1: Register custom n-gram token filter (regular n-gram, not edge)
+	// This creates n-grams from tokens AFTER tokenization
+	ngramFilter := map[string]interface{}{
+		"type": "ngram",
+		"min":  float64(3),
+		"max":  float64(10),
 	}
-	err := indexMapping.AddCustomTokenizer("ngram_tokenizer", ngramTokenizer)
+	
+	err := indexMapping.AddCustomTokenFilter("ngram_filter", ngramFilter)
 	if err != nil {
-		log.Printf("[ERROR] AddCustomTokenizer (ngram_tokenizer) failed: %v", err)
+		log.Printf("[ERROR] AddCustomTokenFilter (ngram_filter) failed: %v", err)
 		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
 		return nil
 	}
-	log.Printf("[DEBUG] Step 1: Registered NGramTokenizer (min=3, max=10)")
+	log.Printf("[DEBUG] Step 1: Registered ngram token filter (min=3, max=10)")
 	
-	// Step 2: Create custom analyzer that uses the tokenizer
+	// Step 2: Create custom analyzer that uses unicode tokenizer + ngram filter
+	// Order: unicode tokenizer -> lowercase -> ngram filter
 	customAnalyzer := map[string]interface{}{
 		"type":      "custom",
-		"tokenizer": "ngram_tokenizer",
+		"tokenizer": "unicode",
 		"token_filters": []interface{}{
-			"lowercase", // lowercase after n-gram creation
+			"lowercase",
+			"ngram_filter",
 		},
 	}
 	
@@ -105,7 +109,7 @@ func (idx *Indexer) InitBleveIndex() error {
 		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
 		return nil
 	}
-	log.Printf("[DEBUG] Step 2: Registered ngram_analyzer with lowercase filter")
+	log.Printf("[DEBUG] Step 2: Registered ngram_analyzer (unicode + lowercase + ngram_filter)")
 	
 	// Step 3: Configure Field Mapping - assign analyzer to specific field
 	fieldMapping := bleve.NewTextFieldMapping()
@@ -114,7 +118,7 @@ func (idx *Indexer) InitBleveIndex() error {
 	
 	log.Printf("[DEBUG] Step 3: Created field mapping for 'content' with ngram_analyzer")
 	
-	log.Printf("[DEBUG] Creating disk index with NGramTokenizer...")
+	log.Printf("[DEBUG] Creating disk index with ngram filter...")
 	
 	// Create the index on disk
 	idx.bleveIdx, err = bleve.New(indexPath, indexMapping)
