@@ -93,53 +93,20 @@ func (idx *Indexer) InitBleveIndex() error {
 	}
 	log.Printf("[DEBUG] Step 1: Registered ngram_filter token filter (min=2, max=4)")
 	
-	// Register shingle token filter to join adjacent tokens (e.g., "falling water" → "fallingwater")
-	shingleFilter := map[string]interface{}{
-		"type":               "shingle",
-		"min_shingle_size":   2,
-		"max_shingle_size":   2,
-		"output_unigrams":    true,
-		"token_separator":    "",
-	}
-	
-	err = indexMapping.AddCustomTokenFilter("shingle_filter", shingleFilter)
-	if err != nil {
-		log.Printf("[WARN] AddCustomTokenFilter (shingle) failed: %v (continuing without it)", err)
-	} else {
-		log.Printf("[DEBUG] Step 1b: Registered shingle_filter (min=2, max=2, no separator)")
-	}
-	
-	// Register length token filter to remove symbols/punctuation (keep only tokens with 2+ chars)
-	lengthFilter := map[string]interface{}{
-		"type":    "length",
-		"min":     2,
-		"max":     200,
-	}
-	
-	err = indexMapping.AddCustomTokenFilter("length_filter", lengthFilter)
-	if err != nil {
-		log.Printf("[WARN] AddCustomTokenFilter (length) failed: %v (continuing without it)", err)
-	} else {
-		log.Printf("[DEBUG] Step 1c: Registered length_filter (min=2, max=200)")
-	}
-	
-	// Create n-gram analyzer using unicode tokenizer + filters
-	// unicode tokenizer: keeps letters, numbers, symbols
-	// Then: lowercase → shingle → length (removes 1-char tokens like punctuation) → ngram
+	// Create custom analyzer with unicode tokenizer + ngram filter
+	// Unicode tokenizer splits on whitespace/punctuation
+	// Then ngram_filter creates 2-4 character n-grams from each token
 	ngramAnalyzer := map[string]interface{}{
 		"type":      "custom",
 		"tokenizer": "unicode",
 		"token_filters": []interface{}{
-			"lowercase",
-			"shingle_filter",
-			"length_filter",
 			"ngram_filter",
 		},
 	}
 	
 	err = indexMapping.AddCustomAnalyzer("ngram_analyzer", ngramAnalyzer)
 	if err != nil {
-		log.Printf("[ERROR] AddCustomAnalyzer (ngram) failed: %v", err)
+		log.Printf("[ERROR] AddCustomAnalyzer (ngram_analyzer) failed: %v", err)
 		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
 		return nil
 	}
