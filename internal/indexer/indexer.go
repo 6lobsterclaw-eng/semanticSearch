@@ -869,15 +869,14 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		return idx.searchKeywordFallback(query, k)
 	}
 
-	// Use simple MatchQuery - N-gram at index time handles fuzzy matching
+	// Use MatchQuery with n-gram analyzer for both index and query
 	matchQuery := bleve.NewMatchQuery(query)
 	matchQuery.FieldVal = "content"
+	matchQuery.Analyzer = "ngram_analyzer"
 
 	searchRequest := bleve.NewSearchRequest(matchQuery)
 	searchRequest.Size = k * 2
 	searchRequest.From = 0
-
-	log.Printf("[DEBUG] About to execute search...")
 
 	searchResult, err := idx.bleveIdx.Search(searchRequest)
 	if err != nil {
