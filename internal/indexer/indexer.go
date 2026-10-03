@@ -948,37 +948,48 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		}
 	}
 	
-	// Use Split Analyzer Strategy via Query String Syntax
-	// Boost exact match (content) higher than fuzzy match (content_ngram)
-	// Format: "(content:query)^3 OR (content_ngram:query)"
-	queryStr := fmt.Sprintf("(content:%s)^3 OR (content_ngram:%s)", query, query)
+	// Use Split Analyzer Strategy: query content field first (exact), then content_ngram (fuzzy)
+	// Try exact match first, if no results, try fuzzy
 	
-	queryParser := bleve.NewQueryParser()
-	parsedQuery, err := queryParser.Parse(queryStr)
-	if err != nil {
-		log.Printf("[ERROR] Query parse failed: %v", err)
-		// Fallback to simple match query on content
-		parsedQuery = bleve.NewMatchQuery(query)
-		parsedQuery.FieldVal = "content"
-	}
+	// First: try exact match on content field
+	exactQuery := bleve.NewMatchQuery(query)
+	exactQuery.FieldVal = "content"
 	
-	log.Printf("[DEBUG] Using Split Analyzer: query_string=%q", queryStr)
-
-	searchRequest := bleve.NewSearchRequest(parsedQuery)
-	searchRequest.Size = k * 2
-	searchRequest.From = 0
+	log.Printf("[DEBUG] Split Analyzer: trying exact match on content field, query=%q", query)
 	
-	// Enable highlighting - we extract matched terms for manual bolding
-	searchRequest.Highlight = bleve.NewHighlightWithStyle("html")
-	searchRequest.Highlight.Fields = []string{"content", "content_ngram"}
+	exactReq := bleve.NewSearchRequest(exactQuery)
+	exactReq.Size = k
+	exactReq.From = 0
 	
-	log.Printf("[DEBUG] SearchRequest: Size=%d, Highlight enabled", searchRequest.Size)
+	exactResult, exactErr := idx.bleveIdx.Search(exactReq)
 	
-	searchResult, err := idx.bleveIdx.Search(searchRequest)
-	if err != nil {
-		log.Printf("[ERROR] Bleve search error: %v", err)
-		return idx.searchKeywordFallback(query, k)
-	}
+	var finalResult *bleve.SearchResult
+	
+	if exactErr == nil && len(exactResult.Hits) > 0 {
+		log.Printf("[DEBUG] Exact match found %d hits", len(exactResult.Hits))
+		finalResult = exactResult
+	} else {
+		// Fallback: try fuzzy match on content_ngram field
+		log.Printf("[DEBUG] No exact match, trying fuzzy on content_ngram field")
+		
+		fuzzyQuery := bleve.NewMatchQuery(query)
+		fuzzyQuery.FieldVal = "content_ngram"
+		fuzzyQuery.Analyzer = "ngram_analyzer"
+		
+		fuzzyReq := bleve.NewSearchRequest(fuzzyQuery)
+		fuzzyReq.Size = k
+		fuzzyReq.From = 0
+		
+		finalResult, exactErr = idx.bleveIdx.Search(fuzzyReq)
+		if exactErr != nil {
+			log.Printf("[ERROR] Fuzzy search also failed: %v", exactErr)
+			return idx.searchKeywordFallback(query, k)
+		}
+	searchResult := finalResult
+	
+	// Enable highlighting
+	searchResult.Request.Highlight = bleve.NewHighlightWithStyle("html")
+	searchResult.Request.Highlight.Fields = []string{"content", "content_ngram"}
 	
 	log.Printf("[DEBUG] Search completed: %d hits found (BM25 scoring)", len(searchResult.Hits))
 	for i, hit := range searchResult.Hits {
