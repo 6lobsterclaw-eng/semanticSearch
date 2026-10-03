@@ -57,6 +57,8 @@ func NewIndexer(embedder interface {
 	Search(search.Vector, int) []search.Result[string]
 	SaveIndex(string) error
 	LoadIndex(string) error
+	Size() int
+	Dim() int
 }) *Indexer {
 	return &Indexer{
 		index:      search.NewIndex[string](),
