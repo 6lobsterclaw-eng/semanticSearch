@@ -74,16 +74,29 @@ func (idx *Indexer) InitBleveIndex() error {
 	mapping := bleve.NewIndexMapping()
 	var err error
 	
+	// First: Register custom edge n-gram token filter
+	edgeNgramFilter := map[string]interface{}{
+		"type": "edge_ngram",
+		"min":  float64(2),
+		"max":  float64(8),
+		"back": false, // front edge n-gram
+	}
+	
+	err = mapping.AddCustomTokenFilter("edge_ngram_filter", edgeNgramFilter)
+	if err != nil {
+		log.Printf("[ERROR] AddCustomTokenFilter failed: %v", err)
+		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
+		return nil
+	}
+	log.Printf("[DEBUG] Registered custom token filter: edge_ngram_filter")
+	
+	// Second: Create custom analyzer using the registered filter
 	err = mapping.AddCustomAnalyzer("ngram_analyzer", map[string]interface{}{
 		"type":      "custom",
 		"tokenizer": "letter",
 		"token_filters": []interface{}{
+			"edge_ngram_filter",  // Use the custom filter we just registered
 			"lowercase",
-			map[string]interface{}{
-				"type": "ngram",
-				"min":  float64(2),
-				"max":  float64(8),
-			},
 		},
 	})
 	if err != nil {
@@ -91,6 +104,7 @@ func (idx *Indexer) InitBleveIndex() error {
 		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
 		return nil
 	}
+	log.Printf("[DEBUG] Registered custom analyzer: ngram_analyzer")
 
 	// Set as default for ALL fields
 	mapping.DefaultAnalyzer = "ngram_analyzer"
