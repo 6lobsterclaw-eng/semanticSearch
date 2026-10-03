@@ -332,11 +332,20 @@ func (idx *Indexer) indexFile(path string) (int, error) {
 					"content":  childContent,
 				}
 				
-				log.Printf("[DEBUG] Indexing doc: id=%s, content_len=%d", childID, len(childContent))
+				log.Printf("[DEBUG BLEVE] Indexing doc: id=%s", childID)
+				log.Printf("[DEBUG BLEVE]   content = %q", childContent[:min(100, len(childContent))])
+				
+				// Debug: Get analyzer for content field
+				if mapping := idx.bleveIdx.Mapping(); mapping != nil {
+					if field, ok := mapping.DefaultMapping.Fields["content"]; ok {
+						log.Printf("[DEBUG BLEVE]   field 'content' analyzer = %s", field.Analyzer)
+					}
+				}
+				
 				if err := idx.bleveIdx.Index(childID, doc); err != nil {
 					log.Printf("[ERROR] Bleve index error: %v", err)
 				} else {
-					log.Printf("[DEBUG] Successfully indexed: %s", childID)
+					log.Printf("[DEBUG BLEVE] Successfully indexed: %s", childID)
 				}
 			} else {
 				log.Printf("[WARN] Bleve index is nil, skipping indexing")
@@ -907,33 +916,48 @@ func (idx *Indexer) searchSemantic(query string, k int) []SearchResult {
 // searchKeyword performs keyword search using Bleve with N-gram tokenization
 // N-gram was applied at index time, so we need to use N-gram analyzer at query time too
 func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
-	log.Printf("[DEBUG Indexer.searchKeyword] Query: %q", query)
-
+	log.Printf("[DEBUG BLEVE] searchKeyword: query=%q", query)
+	
 	if idx.bleveIdx == nil {
 		log.Printf("[WARN] Bleve index not initialized, falling back to substring")
 		return idx.searchKeywordFallback(query, k)
 	}
-
+	
+	// Debug: Check index stats
+	stats := idx.bleveIdx.Stats()
+	log.Printf("[DEBUG BLEVE] Index stats: %+v", stats)
+	
+	// Debug: Check field mapping
+	if mapping := idx.bleveIdx.Mapping(); mapping != nil {
+		log.Printf("[DEBUG BLEVE] Index has %d fields in default mapping", len(mapping.DefaultMapping.Fields))
+		for name, field := range mapping.DefaultMapping.Fields {
+			log.Printf("[DEBUG BLEVE]   Field: %s, Analyzer: %s", name, field.Analyzer)
+		}
+	}
+	
+	// Debug: Try to inspect what terms are indexed
+	log.Printf("[DEBUG BLEVE] Query terms will be analyzed by ngram_analyzer")
+	
 	// Use MatchQuery - rely on index's default analyzer
 	matchQuery := bleve.NewMatchQuery(query)
 	matchQuery.FieldVal = "content"
-	// Don't set Analyzer - use the index's default (which is ngram_analyzer)
-
-	log.Printf("[DEBUG] searchKeyword: query=%q, field=%q, index=%v", 
-		query, "content", idx.bleveIdx != nil)
+	
+	log.Printf("[DEBUG BLEVE] Executing MatchQuery: field=content, query=%q", query)
 	
 	searchRequest := bleve.NewSearchRequest(matchQuery)
 	searchRequest.Size = k * 2
 	searchRequest.From = 0
-
-	log.Printf("[DEBUG] About to execute search...")
+	
 	searchResult, err := idx.bleveIdx.Search(searchRequest)
 	if err != nil {
 		log.Printf("[ERROR] Bleve search error: %v", err)
 		return idx.searchKeywordFallback(query, k)
 	}
 	
-	log.Printf("[DEBUG Indexer.searchKeyword] Bleve found %d results", len(searchResult.Hits))
+	log.Printf("[DEBUG BLEVE] Search completed: %d hits found", len(searchResult.Hits))
+	for i, hit := range searchResult.Hits {
+		log.Printf("[DEBUG BLEVE]   Hit %d: ID=%s, Score=%.4f", i+1, hit.ID, hit.Score)
+	}
 	
 	var results []SearchResult
 	for i, hit := range searchResult.Hits {
