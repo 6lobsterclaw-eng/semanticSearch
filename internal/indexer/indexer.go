@@ -1011,18 +1011,45 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		}
 	}
 	
-	log.Printf("[DEBUG] After IDF filter: %d hits (from %d)", len(filteredHits), len(searchResult.Hits))
+	log.Printf("[DEBUG] After IDF filter: processing hits with IDF scoring", len(searchResult.Hits))
 	
 	var results []SearchResult
 	
-	// Process filtered hits
+	// Process hits with IDF filtering inline
 	hitIndex := 0
-	for _, hit := range filteredHits {
+	for _, hit := range searchResult.Hits {
 		chunkID := hit.ID
 		
 		// Get chunk from our map
 		chunk, ok := idx.chunkMap[chunkID]
 		if !ok {
+			continue
+		}
+		
+		// Count matching n-grams in this document with IDF weighting
+		content := strings.ToLower(chunk.Sentence)
+		idfScore := 0.0
+		matchingNgrams := 0
+		for _, ng := range queryNgrams {
+			if strings.Contains(content, ng) {
+				matchingNgrams++
+				// IDF = log(N / df) - higher for rare terms
+				df := docFreq[ng]
+				if df > 0 {
+					idfScore += math.Log(totalDocs / float64(df))
+				} else {
+					idfScore += math.Log(totalDocs) // max IDF if not found
+				}
+			}
+		}
+		
+		// Keep only if at least 50% of query n-grams are found AND IDF score is significant
+		matchRatio := float64(matchingNgrams) / float64(len(queryNgrams))
+		log.Printf("[DEBUG] Hit %s: matchRatio=%.2f, idfScore=%.2f, matchingNgrams=%d/%d", 
+			hit.ID, matchRatio, idfScore, matchingNgrams, len(queryNgrams))
+		
+		// Skip hits where less than 50% of n-grams match OR IDF <= 1.0
+		if matchRatio < 0.5 || idfScore <= 1.0 {
 			continue
 		}
 		
