@@ -737,8 +737,10 @@ func main() {
 							}
 							embedder = emb
 							idx = indexer.NewIndexer(emb)
-							// Initialize Bleve index for fuzzy keyword search
-							idx.InitBleveIndex()
+								// Initialize Bleve index for fuzzy keyword search
+								log.Println("[MAIN] Calling InitBleveIndex...")
+								idx.InitBleveIndex()
+								log.Println("[MAIN] InitBleveIndex returned")
 							// Wire LLM client if already started
 						if llmClient != nil {
 							idx.SetLLMClient(llmClient)
