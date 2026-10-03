@@ -70,9 +70,8 @@ func (idx *Indexer) InitBleveIndex() error {
 
 	log.Printf("[DEBUG] Creating custom analyzer 'ngram_analyzer'...")
 
-	// Add custom analyzer with edge_ngram token filter
-	// Edge n-gram creates n-grams from the start of the token (e.g., "hello" -> "he", "hel", "hell", "hello")
-	// This is ideal for prefix matching and handling typos
+	// First, verify the basic components are available by using simple config
+	// Use standard analyzer as base - we'll modify its behavior
 	err := mapping.AddCustomAnalyzer("ngram_analyzer", map[string]interface{}{
 		"type":      "custom",
 		"tokenizer": "letter",
@@ -82,14 +81,12 @@ func (idx *Indexer) InitBleveIndex() error {
 				"type": "edge_ngram",
 				"min":  float64(2),
 				"max":  float64(10),
-				"back": false, // front-side n-grams
 			},
 		},
 	})
 	if err != nil {
 		log.Printf("[ERROR] Failed to add custom ngram analyzer: %v", err)
 		log.Printf("[DEBUG] Falling back to default analyzer")
-		// Fall back to creating index without custom mapping
 		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
 		log.Printf("[INFO] Bleve index initialized with default analyzer")
 		return nil
@@ -97,10 +94,8 @@ func (idx *Indexer) InitBleveIndex() error {
 
 	log.Printf("[DEBUG] Custom analyzer added successfully, creating index...")
 
-	// Apply custom analyzer to content field
-	contentField := bleve.NewTextFieldMapping()
-	contentField.Analyzer = "ngram_analyzer"
-	mapping.DefaultMapping.AddFieldMappingsAt("content", contentField)
+	// Apply custom analyzer as default for all fields
+	mapping.DefaultAnalyzer = "ngram_analyzer"
 
 	log.Printf("[DEBUG] Creating in-memory index with custom mapping...")
 
@@ -888,12 +883,11 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		return idx.searchKeywordFallback(query, k)
 	}
 
-	// Use MatchQuery with N-gram analyzer to match indexed n-grams
-	log.Printf("[DEBUG] Creating MatchQuery with analyzer 'ngram_analyzer' for query: %q", query)
+	// Use MatchQuery - analyzer will use the default from the index mapping
+	log.Printf("[DEBUG] Executing Bleve search with MatchQuery...")
 	matchQuery := bleve.NewMatchQuery(query)
-	matchQuery.Analyzer = "ngram_analyzer"
+	// Don't specify analyzer - use the default from the index
 
-	log.Printf("[DEBUG] Executing Bleve search...")
 	searchRequest := bleve.NewSearchRequest(matchQuery)
 	searchRequest.Size = k * 2
 	searchRequest.From = 0
