@@ -10,7 +10,6 @@ import (
 	"sync"
 
 	"semantic-search/internal/indexer"
-	"semantic-search/internal/semantic"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -28,10 +27,6 @@ var (
 	statusLabel    *tview.TextView
 	searchInput    *tview.InputField
 	resultsView    *tview.List
-	modeSelector   *tview.TextView
-	filePathInput  *tview.InputField
-	exportPathInp  *tview.InputField
-	importPathInp  *tview.InputField
 
 	// State
 	currentMode    string // "semantic", "keyword", "hybrid"
@@ -82,12 +77,10 @@ func setupMainMenu() {
 	header := tview.NewTextView().
 		SetText("semanticSearch TUI v1.0").
 		SetTextAlign(tview.AlignCenter).
-		SetTextColor(tcell.ColorBlack).
-		SetBackgroundColor(tcell.ColorWhite)
+		SetTextColor(tcell.ColorBlack)
 
-	// Menu buttons - using Flex instead of Grid
+	// Menu buttons - using Flex
 	menuFlex := tview.NewFlex().SetDirection(tview.FlexRow)
-	menuFlex.SetBackgroundColor(tcell.ColorWhite)
 
 	// Create clickable menu items
 	menuItems := []struct {
@@ -105,8 +98,6 @@ func setupMainMenu() {
 
 	for _, item := range menuItems {
 		btn := tview.NewButton(fmt.Sprintf("[%s] %s", item.key, item.name))
-		btn.SetBackgroundColor(tcell.ColorLightGray).
-			SetTextColor(tcell.ColorBlack)
 		btn.SetSelectedFunc(func() {
 			if item.page == "quit" {
 				app.Stop()
@@ -135,7 +126,6 @@ func setupMainMenu() {
 
 func setupLlamaScreen() {
 	flex := tview.NewFlex().SetDirection(tview.FlexRow)
-	flex.SetBackgroundColor(tcell.ColorWhite)
 
 	// Title
 	title := tview.NewTextView().
@@ -146,7 +136,6 @@ func setupLlamaScreen() {
 
 	// Model path input
 	form := tview.NewForm()
-	form.SetBackgroundColor(tcell.ColorWhite)
 
 	modelPath := "C:\\llama.cpp\\models\\qwen3-0.6b-q4_k_m.gguf"
 	port := "8080"
@@ -176,8 +165,7 @@ func setupLlamaScreen() {
 	// Status output
 	statusView := tview.NewTextView().
 		SetDynamicColors(true).
-		SetScrollable(true).
-		SetBackgroundColor(tcell.ColorWhite)
+		SetScrollable(true)
 	flex.AddItem(statusView, 10, 0, false)
 
 	pages.AddPage("llama", flex, true, false)
@@ -244,7 +232,6 @@ func stopLlamaServer() {
 
 func setupIndexScreen() {
 	flex := tview.NewFlex().SetDirection(tview.FlexRow)
-	flex.SetBackgroundColor(tcell.ColorWhite)
 
 	// Title
 	title := tview.NewTextView().
@@ -255,7 +242,6 @@ func setupIndexScreen() {
 
 	// Form
 	form := tview.NewForm()
-	form.SetBackgroundColor(tcell.ColorWhite)
 
 	folderPath := ""
 
@@ -284,8 +270,7 @@ func setupIndexScreen() {
 	// Progress view
 	progressView := tview.NewTextView().
 		SetDynamicColors(true).
-		SetScrollable(true).
-		SetBackgroundColor(tcell.ColorWhite)
+		SetScrollable(true)
 	flex.AddItem(progressView, 10, 0, false)
 
 	pages.AddPage("index", flex, true, false)
@@ -294,15 +279,15 @@ func setupIndexScreen() {
 func indexFolder(folderPath string) {
 	updateStatus("Starting indexing...")
 
-	// Create embedder
-	emb, err := indexer.NewHTTPEmbedder("http://localhost:8080")
+	// Create embedder - needs serverURL and modelPath
+	emb, err := indexer.NewHTTPEmbedder("http://localhost:8080", "qwen3-0.6b")
 	if err != nil {
 		updateStatus(fmt.Sprintf("Embedder error: %v", err))
 		return
 	}
 
 	// Create indexer
-	idx := indexer.New(emb)
+	idx := indexer.NewIndexer(emb)
 
 	// Scan files
 	files, err := scanFolder(folderPath)
@@ -332,7 +317,6 @@ func indexFolder(folderPath string) {
 
 func setupSearchScreen() {
 	flex := tview.NewFlex().SetDirection(tview.FlexRow)
-	flex.SetBackgroundColor(tcell.ColorWhite)
 
 	// Title
 	title := tview.NewTextView().
@@ -343,7 +327,6 @@ func setupSearchScreen() {
 
 	// Mode selector
 	modeFlex := tview.NewFlex()
-	modeFlex.SetBackgroundColor(tcell.ColorWhite)
 
 	modeFlex.AddItem(tview.NewTextView().SetText("Mode: "), 7, 0, false)
 
@@ -372,40 +355,24 @@ func setupSearchScreen() {
 	// Search input
 	searchInput = tview.NewInputField().
 		SetLabel("Query: ").
-		SetPlaceholder("Enter search query...").
-		SetBackgroundColor(tcell.ColorWhite).
-		SetTextColor(tcell.ColorBlack).
-		SetFieldTextColor(tcell.ColorBlack)
-
-	searchInput.SetInputHandler(func(key tview.Key, ch rune) (bool, tview.Primitive, bool) {
-		if key == tview.KeyEnter {
-			go performSearch(searchInput.GetText())
-			return true, nil, true
-		}
-		return false, nil, false
-	})
+		SetPlaceholder("Enter search query...")
 
 	flex.AddItem(searchInput, 3, 0, false)
 
 	// Results header
 	header := tview.NewTextView().
 		SetText("# | Extract                                | Score  | File               | Mode").
-		SetTextColor(tcell.ColorDarkGray).
-		SetBackgroundColor(tcell.ColorWhite)
+		SetTextColor(tcell.ColorDarkGray)
 	flex.AddItem(header, 1, 0, false)
 
 	// Results list
-	resultsView = tview.NewList().
-		SetMainTextColor(tcell.ColorBlack).
-		SetSecondaryTextColor(tcell.ColorDarkGray).
-		SetSelectedBackgroundColor(tcell.ColorLightGray).
-		SetSelectedTextColor(tcell.ColorBlack)
+	resultsView = tview.NewList()
 
 	flex.AddItem(resultsView, 0, 1, false)
 
 	// Help text
 	help := tview.NewTextView().
-		SetText("↑↓ Scroll | Enter: View | Esc: Back").
+		SetText("Enter to search, Esc to go back").
 		SetTextColor(tcell.ColorDarkGray).
 		SetTextAlign(tview.AlignCenter)
 	flex.AddItem(help, 1, 0, false)
@@ -432,22 +399,7 @@ func performSearch(query string) {
 	updateStatus(fmt.Sprintf("Searching for: %s", query))
 
 	// Use indexer's search methods
-	var results []indexer.SearchResult
-	var err error
-
-	switch currentMode {
-	case "semantic":
-		results = indexerObj.Search(query, 50, "semantic")
-	case "keyword":
-		results = indexerObj.Search(query, 50, "keyword")
-	case "hybrid":
-		results = indexerObj.Search(query, 50, "hybrid")
-	}
-
-	if err != nil {
-		updateStatus(fmt.Sprintf("Search error: %v", err))
-		return
-	}
+	results := indexerObj.Search(query, 50, currentMode)
 
 	// Convert to display results
 	currentResults = make([]SearchResult, 0, len(results))
@@ -456,7 +408,7 @@ func performSearch(query string) {
 
 		for i, r := range results {
 			// Extract text snippet
-			extract := r.Text
+			extract := r.Extract
 			if len(extract) > 35 {
 				extract = extract[:35] + "..."
 			}
@@ -467,8 +419,8 @@ func performSearch(query string) {
 				Index:   i + 1,
 				Extract: extract,
 				Score:   r.Score,
-				File:    r.Source,
-				Mode:    currentMode[:3],
+				File:    r.Path,
+				Mode:    r.Type,
 			}
 			currentResults = append(currentResults, result)
 
@@ -487,7 +439,6 @@ func performSearch(query string) {
 
 func setupExportScreen() {
 	flex := tview.NewFlex().SetDirection(tview.FlexRow)
-	flex.SetBackgroundColor(tcell.ColorWhite)
 
 	// Title
 	title := tview.NewTextView().
@@ -498,7 +449,6 @@ func setupExportScreen() {
 
 	// Form
 	form := tview.NewForm()
-	form.SetBackgroundColor(tcell.ColorWhite)
 
 	exportPath := ""
 
@@ -527,8 +477,7 @@ func setupExportScreen() {
 	// Status view
 	statusView := tview.NewTextView().
 		SetDynamicColors(true).
-		SetScrollable(true).
-		SetBackgroundColor(tcell.ColorWhite)
+		SetScrollable(true)
 	flex.AddItem(statusView, 10, 0, false)
 
 	pages.AddPage("export", flex, true, false)
@@ -554,7 +503,6 @@ func exportIndex(path string) {
 
 func setupImportScreen() {
 	flex := tview.NewFlex().SetDirection(tview.FlexRow)
-	flex.SetBackgroundColor(tcell.ColorWhite)
 
 	// Title
 	title := tview.NewTextView().
@@ -565,7 +513,6 @@ func setupImportScreen() {
 
 	// Form
 	form := tview.NewForm()
-	form.SetBackgroundColor(tcell.ColorWhite)
 
 	importPath := ""
 
@@ -590,8 +537,7 @@ func setupImportScreen() {
 	// Status view
 	statusView := tview.NewTextView().
 		SetDynamicColors(true).
-		SetScrollable(true).
-		SetBackgroundColor(tcell.ColorWhite)
+		SetScrollable(true)
 	flex.AddItem(statusView, 10, 0, false)
 
 	pages.AddPage("import", flex, true, false)
@@ -601,14 +547,14 @@ func importIndex(path string) {
 	updateStatus(fmt.Sprintf("Importing from: %s", path))
 
 	// Create embedder
-	emb, err := indexer.NewHTTPEmbedder("http://localhost:8080")
+	emb, err := indexer.NewHTTPEmbedder("http://localhost:8080", "qwen3-0.6b")
 	if err != nil {
 		updateStatus(fmt.Sprintf("Embedder error: %v", err))
 		return
 	}
 
 	// Create new indexer
-	idx := indexer.New(emb)
+	idx := indexer.NewIndexer(emb)
 
 	if err := idx.Import(path); err != nil {
 		updateStatus(fmt.Sprintf("Import error: %v", err))
