@@ -148,7 +148,16 @@ func setupLlamaScreen() {
 	embedModelPath := "C:\\llama.cpp\\models\\qwen3-0.6b-q4_k_m.gguf"
 	embedPort := "8080"
 
-	form.AddTextView("", "Embedding Model:", 40, 1, true)
+	// LLM model (port 8081)
+	llmModelPath := "C:\\llama.cpp\\models\\qwen3-8b-q4_k_m.gguf"
+	llmPort := "8081"
+
+	// Embedding model section
+	embedLabel := tview.NewTextView().
+		SetText("Embedding Model:").
+		SetTextColor(tcell.ColorBlack)
+	flex.AddItem(embedLabel, 1, 0, false)
+
 	form.AddInputField("Model Path:", embedModelPath, 60, nil, func(text string) {
 		embedModelPath = text
 	})
@@ -156,11 +165,12 @@ func setupLlamaScreen() {
 		embedPort = text
 	})
 
-	// LLM model (port 8081)
-	llmModelPath := "C:\\llama.cpp\\models\\qwen3-8b-q4_k_m.gguf"
-	llmPort := "8081"
+	// LLM model section
+	llmLabel := tview.NewTextView().
+		SetText("LLM Model (for questions):").
+		SetTextColor(tcell.ColorBlack)
+	flex.AddItem(llmLabel, 1, 0, false)
 
-	form.AddTextView("", "LLM Model (for questions):", 40, 1, true)
 	form.AddInputField("Model Path:", llmModelPath, 60, nil, func(text string) {
 		llmModelPath = text
 	})
