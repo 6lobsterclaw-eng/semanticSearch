@@ -1016,21 +1016,15 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	exactReq.Highlight = bleve.NewHighlightWithStyle("html")
 	exactReq.Highlight.Fields = []string{"content", "content_ngram"}
 	
-	// Debug: log the query and enable explanation
-	log.Printf("[DEBUG] Exact query: %+v", exactQuery)
-	
 	exactResult, exactErr := idx.bleveIdx.Search(exactReq)
 	
 	if exactErr != nil {
 		log.Printf("[DEBUG] Exact search error: %v", exactErr)
 	}
 	
-	// Log exact results with scores
+	// Log exact results count
 	if exactResult != nil {
 		log.Printf("[DEBUG] Exact search: found %d hits", len(exactResult.Hits))
-		for i, hit := range exactResult.Hits {
-			log.Printf("[DEBUG] Exact hit %d: ID=%s, Score=%.4f", i, hit.ID, hit.Score)
-		}
 	}
 	
 	var searchResult *bleve.SearchResult
@@ -1064,15 +1058,9 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 			return idx.searchKeywordFallback(query, k)
 		}
 		log.Printf("[DEBUG] Fuzzy search found %d hits", len(searchResult.Hits))
-		for i, hit := range searchResult.Hits {
-			log.Printf("[DEBUG] Fuzzy hit %d: ID=%s, Score=%.4f", i, hit.ID, hit.Score)
-		}
 	}
 	
 	log.Printf("[DEBUG] Search completed: %d hits found (BM25 scoring)", len(searchResult.Hits))
-	for i, hit := range searchResult.Hits {
-		log.Printf("[DEBUG]   Hit %d: ID=%s, Score=%.4f, HasFragments=%v", i+1, hit.ID, hit.Score, hit.Fragments != nil)
-	}
 
 	var results []SearchResult
 	
@@ -1085,18 +1073,14 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		
 		// Skip parent chunks - only return child chunks
 		if !strings.Contains(chunkID, "#child#") {
-			log.Printf("[DEBUG] Skipping parent chunk: %s", chunkID)
 			continue
 		}
 		
 		chunk, ok := idx.chunkMap[chunkID]
 		if !ok {
-			log.Printf("[DEBUG] WARNING: chunkMap miss for %s", chunkID)
 			continue
 		}
-	
-		log.Printf("[DEBUG] Using chunk: ID=%s, Sentence len=%d, Sentence=%q", chunk.ID, len(chunk.Sentence), chunk.Sentence[:min(100, len(chunk.Sentence))])
-	
+		
 		// Filter false positives: require at least 50% of query n-grams to match
 		// This allows fuzzy matches (contilever→cantilever) while filtering false positives
 		contentLower := strings.ToLower(chunk.Sentence)
@@ -1108,27 +1092,20 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		queryNgrams := generateNgrams(query, 2, 4)
 		if len(queryNgrams) > 0 {
 			matchingNgrams := 0
-			matchedList := []string{}
 			for _, ng := range queryNgrams {
 				if strings.Contains(contentLower, ng) {
 					matchingNgrams++
-					matchedList = append(matchedList, ng)
 				}
 			}
 			matchRatio := float64(matchingNgrams) / float64(len(queryNgrams))
 			
-			log.Printf("[DEBUG] N-gram filter: query=%q, content=%q", queryLower, contentLower[:min(50, len(contentLower))])
-			log.Printf("[DEBUG] N-gram filter: queryNgrams=%v, matched=%v, ratio=%.2f", queryNgrams, matchedList, matchRatio)
-			
 			// Accept if: exact match OR 50%+ n-gram overlap
 			if matchRatio < 0.50 && !hasExactMatch {
-				log.Printf("[DEBUG] Filtering out: %s matchRatio=%.2f < 0.50, no exact match", chunkID, matchRatio)
 				continue
 			}
-			log.Printf("[DEBUG] Accepting %s: exact=%v, matchRatio=%.2f", chunkID, hasExactMatch, matchRatio)
 		}
 		
-		log.Printf("[DEBUG] Using BM25 score for %s: %.4f", chunkID, hit.Score)
+		// Use BM25 score from Bleve
 		
 		// Use original sentence, try to bold the matched term
 		extract := chunk.Sentence
