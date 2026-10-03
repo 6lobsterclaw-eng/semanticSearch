@@ -971,6 +971,11 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 			// Use the highlighted fragments from Bleve
 			if fragments, ok := hit.Fragments["content"]; ok && len(fragments) > 0 {
 				extract = fragments[0]
+				// Replace <em> or <mark> tags with <b> for bold
+				extract = strings.ReplaceAll(extract, "<em>", "<b>")
+				extract = strings.ReplaceAll(extract, "</em>", "</b>")
+				extract = strings.ReplaceAll(extract, "<mark>", "<b>")
+				extract = strings.ReplaceAll(extract, "</mark>", "</b>")
 				log.Printf("[DEBUG] Using highlighted fragment for %s: %s", chunkID, extract)
 			}
 		}
