@@ -77,16 +77,29 @@ func (idx *Indexer) InitBleveIndex() error {
 	// Create new index mapping
 	indexMapping := bleve.NewIndexMapping()
 	
-	// Step 1: Register n-gram token filter
+	// Step 1: Register lowercase token filter (required for n-gram analyzer)
+	lowercaseFilter := map[string]interface{}{
+		"type": "lower",
+	}
+	
+	err = indexMapping.AddCustomTokenFilter("lowercase", lowercaseFilter)
+	if err != nil {
+		log.Printf("[ERROR] AddCustomTokenFilter (lowercase) failed: %v", err)
+		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
+		return nil
+	}
+	log.Printf("[DEBUG] Step 0: Registered lowercase token filter")
+	
+	// Step 2: Register n-gram token filter
 	ngramFilter := map[string]interface{}{
 		"type": "ngram",
 		"min":  float64(2),
 		"max":  float64(4),
 	}
 	
-	err := indexMapping.AddCustomTokenFilter("ngram_filter", ngramFilter)
+	err = indexMapping.AddCustomTokenFilter("ngram_filter", ngramFilter)
 	if err != nil {
-		log.Printf("[ERROR] AddCustomTokenFilter failed: %v", err)
+		log.Printf("[ERROR] AddCustomTokenFilter (ngram) failed: %v", err)
 		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
 		return nil
 	}
@@ -141,7 +154,11 @@ func (idx *Indexer) InitBleveIndex() error {
 		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
 		return nil
 	}
-
+	
+	// Verify index has documents and field mappings
+	stats := idx.bleveIdx.Stats()
+	log.Printf("[DEBUG] Index created successfully, stats: searches=%d", stats.Searches)
+	
 	log.Printf("[INFO] Bleve index initialized with Split Analyzer (exact + ngram)")
 	
 	if idx.bleveIdx != nil {
