@@ -63,27 +63,50 @@ func NewIndexer(embedder interface {
 	}
 }
 
-// InitBleveIndex initializes a Bleve index with standard analyzer
+// InitBleveIndex initializes a Bleve index with N-gram tokenization for fuzzy keyword search
 func (idx *Indexer) InitBleveIndex() error {
-	// Create index mapping with standard analyzer
+	// Create index mapping with N-gram analyzer for fuzzy matching at index time
 	mapping := bleve.NewIndexMapping()
 
 	var err error
-	log.Printf("[DEBUG] Creating index with standard analyzer...")
-
-	// Use standard analyzer - no n-gram at index time
-	// We'll handle fuzzy matching at query time instead
-
-	log.Printf("[DEBUG] Creating in-memory index...")
-
-	// Create in-memory index
-	idx.bleveIdx, err = bleve.NewMemOnly(mapping)
+	
+	// Add custom analyzer with ngram token filter for index-time n-gramming
+	// N-gram at index time: "cantilever" -> "ca", "can", "cant", "canti", "cantil", "cantile", "cantilev", "cantilever"
+	err = mapping.AddCustomAnalyzer("ngram_analyzer", map[string]interface{}{
+		"type":      "custom",
+		"tokenizer": "letter",
+		"token_filters": []interface{}{
+			"lowercase",
+			map[string]interface{}{
+				"type": "ngram",
+				"min":  float64(2),
+				"max":  float64(8),
+			},
+		},
+	})
 	if err != nil {
-		log.Printf("[ERROR] Failed to create index: %v", err)
-		return err
+		log.Printf("[ERROR] Failed to add custom ngram analyzer: %v", err)
+		// Fall back to standard analyzer
+		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
+		log.Printf("[INFO] Bleve index initialized with standard analyzer (fallback)")
+		return nil
 	}
 
-	log.Printf("[INFO] Bleve index initialized with standard analyzer")
+	// Set as default analyzer - this should work for both indexing and querying
+	mapping.DefaultAnalyzer = "ngram_analyzer"
+	
+	log.Printf("[DEBUG] Created ngram_analyzer, creating index...")
+
+	// Create in-memory index with the custom mapping
+	idx.bleveIdx, err = bleve.NewMemOnly(mapping)
+	if err != nil {
+		log.Printf("[ERROR] Failed to create index with ngram: %v", err)
+		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
+		log.Printf("[INFO] Bleve index initialized with standard analyzer (fallback)")
+		return nil
+	}
+
+	log.Printf("[INFO] Bleve index initialized with N-gram analyzer (min=2, max=8)")
 	return nil
 }
 
@@ -857,14 +880,11 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		return idx.searchKeywordFallback(query, k)
 	}
 
-	// Use MatchQuery with fuzzy matching at query time
-	log.Printf("[DEBUG] Executing Bleve search with MatchQuery (fuzzy)...")
+	// Use simple MatchQuery - N-gram at index time handles fuzzy matching
+	log.Printf("[DEBUG] Executing Bleve search with N-gram index...")
 	matchQuery := bleve.NewMatchQuery(query)
-	matchQuery.Fuzziness = 1  // Allow 1 edit distance for typo handling
-	matchQuery.Prefix = 0  // No prefix requirement
-	matchQuery.FieldVal = "content"  // Explicitly search in content field
-	log.Printf("[DEBUG] Fuzzy query: term=%q, fuzziness=%d, prefix=%d, field=%q", 
-		query, matchQuery.Fuzziness, matchQuery.Prefix, matchQuery.FieldVal)
+	matchQuery.FieldVal = "content"
+	log.Printf("[DEBUG] Query: term=%q, field=%q", query, matchQuery.FieldVal)
 
 	searchRequest := bleve.NewSearchRequest(matchQuery)
 	searchRequest.Size = k * 2
