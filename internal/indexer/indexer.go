@@ -109,6 +109,14 @@ func (idx *Indexer) InitBleveIndex() error {
 	}
 	log.Printf("[DEBUG] Step 2: Registered custom analyzer: ngram_analyzer")
 
+	// Debug: List all registered analyzers
+	analyzerNames, _ := indexMapping.AnalyzerNames()
+	log.Printf("[DEBUG] Registered analyzers: %v", analyzerNames)
+	
+	// Debug: List all registered token filters
+	filterNames, _ := indexMapping.TokenFilterNames()
+	log.Printf("[DEBUG] Registered token filters: %v", filterNames)
+
 	// Step 3: Configure Field Mapping - assign analyzer to specific field
 	fieldMapping := bleve.NewTextFieldMapping()
 	fieldMapping.Analyzer = "ngram_analyzer"
@@ -940,11 +948,12 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	// Debug: Try to inspect what terms are indexed
 	log.Printf("[DEBUG BLEVE] Query terms will be analyzed by ngram_analyzer")
 	
-	// Use MatchQuery - rely on index's default analyzer
+	// Use MatchQuery with explicit ngram_analyzer
 	matchQuery := bleve.NewMatchQuery(query)
 	matchQuery.FieldVal = "content"
+	matchQuery.Analyzer = "ngram_analyzer"
 	
-	log.Printf("[DEBUG BLEVE] Executing MatchQuery: field=content, query=%q", query)
+	log.Printf("[DEBUG BLEVE] Executing MatchQuery: field=content, analyzer=ngram_analyzer, query=%q", query)
 	
 	searchRequest := bleve.NewSearchRequest(matchQuery)
 	searchRequest.Size = k * 2
