@@ -78,9 +78,10 @@ func (idx *Indexer) InitBleveIndex() error {
 	
 	// Step 1: Register custom n-gram token filter (regular n-gram, not edge)
 	// Regular n-gram creates substrings from ALL positions - handles compound words & typos
+	// Using min=3 to reduce false positives from short n-grams like "te", "er"
 	ngramFilter := map[string]interface{}{
 		"type": "ngram",
-		"min":  float64(2),
+		"min":  float64(3),
 		"max":  float64(10),
 	}
 	
@@ -957,8 +958,18 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		log.Printf("[DEBUG]   Hit %d: ID=%s, Score=%.4f", i+1, hit.ID, hit.Score)
 	}
 	
+	// Filter by minimum score threshold to reduce false positives
+	minScore := 0.1
+	var filteredHits []*bleve.SearchHit
+	for _, hit := range searchResult.Hits {
+		if hit.Score >= minScore {
+			filteredHits = append(filteredHits, hit)
+		}
+	}
+	log.Printf("[DEBUG] After score filter (>=%.2f): %d hits", minScore, len(filteredHits))
+	
 	var results []SearchResult
-	for i, hit := range searchResult.Hits {
+	for i, hit := range filteredHits {
 		chunkID := hit.ID
 		
 		// Get chunk from our map
