@@ -123,12 +123,12 @@ func (idx *Indexer) InitBleveIndex() error {
 		log.Printf("[DEBUG] Step 1c: Registered length_filter (min=2, max=200)")
 	}
 	
-	// Create n-gram analyzer using letter tokenizer + filters
-	// letter tokenizer: only keeps Unicode letters (removes numbers, symbols)
-	// Then: lowercase → shingle → length → ngram
+	// Create n-gram analyzer using unicode tokenizer + filters
+	// unicode tokenizer: keeps letters, numbers, symbols
+	// Then: lowercase → shingle → length (removes 1-char tokens like punctuation) → ngram
 	ngramAnalyzer := map[string]interface{}{
 		"type":      "custom",
-		"tokenizer": "letter",
+		"tokenizer": "unicode",
 		"token_filters": []interface{}{
 			"lowercase",
 			"shingle_filter",
