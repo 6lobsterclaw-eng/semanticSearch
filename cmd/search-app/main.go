@@ -444,7 +444,7 @@ func main() {
             document.getElementById('indexStatus').innerHTML = '<div class="info">Indexing ' + filesToIndex.length + ' files...</div>';
             
             // Index each file sequentially
-            var indexed = 0;
+            indexed = 0;
             var errors = [];
             
             console.log("Starting indexing, files:", JSON.stringify(filesToIndex));
