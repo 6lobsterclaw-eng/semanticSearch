@@ -98,7 +98,6 @@ func (idx *Indexer) InitBleveIndex() error {
 		"tokenizer": "unicode",
 		"token_filters": []interface{}{
 			"ngram_filter",
-			"lowercase",
 		},
 	}
 	
