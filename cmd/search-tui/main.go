@@ -23,6 +23,10 @@ var (
 	llamaMutex    sync.Mutex
 	serverRunning bool
 
+	// Two servers: one for embedding, one for LLM
+	llmProc       *exec.Cmd
+	llmServerRunning bool
+
 	// UI components
 	statusLabel    *tview.TextView
 	searchInput    *tview.InputField
@@ -137,26 +141,41 @@ func setupLlamaScreen() {
 		SetTextColor(tcell.ColorBlack)
 	flex.AddItem(title, 3, 0, false)
 
-	// Model path input
+	// Model path inputs
 	form := tview.NewForm()
 
-	modelPath := "C:\\llama.cpp\\models\\qwen3-0.6b-q4_k_m.gguf"
-	port := "8080"
+	// Embedding model (port 8080)
+	embedModelPath := "C:\\llama.cpp\\models\\qwen3-0.6b-q4_k_m.gguf"
+	embedPort := "8080"
 
-	form.AddInputField("Model Path:", modelPath, 60, nil, func(text string) {
-		modelPath = text
+	form.AddTextView("Embedding Model:", "", 40, 1, true)
+	form.AddInputField("Model Path:", embedModelPath, 60, nil, func(text string) {
+		embedModelPath = text
+	})
+	form.AddInputField("Port:", embedPort, 10, nil, func(text string) {
+		embedPort = text
 	})
 
-	form.AddInputField("Port:", port, 10, nil, func(text string) {
-		port = text
+	// LLM model (port 8081)
+	llmModelPath := "C:\\llama.cpp\\models\\qwen3-8b-q4_k_m.gguf"
+	llmPort := "8081"
+
+	form.AddTextView("\nLLM Model (for questions):", "", 40, 1, true)
+	form.AddInputField("Model Path:", llmModelPath, 60, nil, func(text string) {
+		llmModelPath = text
+	})
+	form.AddInputField("Port:", llmPort, 10, nil, func(text string) {
+		llmPort = text
 	})
 
-	form.AddButton("Start", func() {
-		startLlamaServer(modelPath, port)
+	form.AddButton("Start Both", func() {
+		startLlamaServer(embedModelPath, embedPort, true)
+		go startLLMServer(llmModelPath, llmPort)
 	})
 
-	form.AddButton("Stop", func() {
+	form.AddButton("Stop Both", func() {
 		stopLlamaServer()
+		stopLLMServer()
 	})
 
 	form.AddButton("Back", func() {
@@ -174,7 +193,7 @@ func setupLlamaScreen() {
 	pages.AddPage("llama", flex, true, false)
 }
 
-func startLlamaServer(modelPath, port string) {
+func startLlamaServer(modelPath, port string, embedding bool) {
 	llamaMutex.Lock()
 	defer llamaMutex.Unlock()
 
@@ -190,13 +209,17 @@ func startLlamaServer(modelPath, port string) {
 	}
 
 	// Start llama-server
-	llamaProc = exec.Command(
+	args := []string{
 		"llama-server.exe",
 		"-m", modelPath,
 		"-p", port,
-		"--embedding", "true",
 		"-ngl", "0",
-	)
+	}
+	if embedding {
+		args = append(args, "--embedding", "true")
+	}
+
+	llamaProc = exec.Command(args[0], args[1:]...)
 	llamaProc.Stdout = os.Stdout
 	llamaProc.Stderr = os.Stderr
 
@@ -206,7 +229,7 @@ func startLlamaServer(modelPath, port string) {
 	}
 
 	serverRunning = true
-	updateStatus(fmt.Sprintf("Server started on port %s", port))
+	updateStatus(fmt.Sprintf("Embedding server started on port %s", port))
 
 	// Wait in background
 	go func() {
@@ -215,7 +238,46 @@ func startLlamaServer(modelPath, port string) {
 		serverRunning = false
 		llamaProc = nil
 		llamaMutex.Unlock()
-		updateStatus("Server stopped")
+		updateStatus("Embedding server stopped")
+	}()
+}
+
+func startLLMServer(modelPath, port string) {
+	if llmServerRunning {
+		updateStatus("LLM server already running")
+		return
+	}
+
+	// Check if model exists
+	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
+		updateStatus(fmt.Sprintf("LLM Model not found: %s", modelPath))
+		return
+	}
+
+	// Start llama-server (no embedding flag for LLM)
+	llmProc = exec.Command(
+		"llama-server.exe",
+		"-m", modelPath,
+		"-p", port,
+		"-ngl", "0",
+	)
+	llmProc.Stdout = os.Stdout
+	llmProc.Stderr = os.Stderr
+
+	if err := llmProc.Start(); err != nil {
+		updateStatus(fmt.Sprintf("Failed to start LLM: %v", err))
+		return
+	}
+
+	llmServerRunning = true
+	updateStatus(fmt.Sprintf("LLM server started on port %s", port))
+
+	// Wait in background
+	go func() {
+		llmProc.Wait()
+		llmServerRunning = false
+		llmProc = nil
+		updateStatus("LLM server stopped")
 	}()
 }
 
@@ -227,7 +289,16 @@ func stopLlamaServer() {
 		llamaProc.Process.Kill()
 		llamaProc = nil
 		serverRunning = false
-		updateStatus("Server stopped")
+		updateStatus("Embedding server stopped")
+	}
+}
+
+func stopLLMServer() {
+	if llmProc != nil && llmProc.Process != nil {
+		llmProc.Process.Kill()
+		llmProc = nil
+		llmServerRunning = false
+		updateStatus("LLM server stopped")
 	}
 }
 
