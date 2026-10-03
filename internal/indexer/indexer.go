@@ -65,7 +65,7 @@ func NewIndexer(embedder interface {
 }
 
 // InitBleveIndex initializes a Bleve index with N-gram tokenization for fuzzy keyword search
-// Following official Bleve docs: https://github.com/blevesearch/bleve/blob/master/docs/search_autocomplete.md
+// Using NewNGramTokenizer for proper n-gram tokenization
 func (idx *Indexer) InitBleveIndex() error {
 	// Use temp directory for disk-based index
 	indexPath := filepath.Join(os.TempDir(), "bleve_ngram_index")
@@ -76,47 +76,48 @@ func (idx *Indexer) InitBleveIndex() error {
 	// Create new index mapping
 	indexMapping := bleve.NewIndexMapping()
 	
-	// Step 1: Register custom n-gram token filter (regular n-gram)
-	// Using min=3 to reduce false positives from short n-grams
-	ngramFilter := map[string]interface{}{
-		"type": "ngram",
-		"min":  float64(3),
-		"max":  float64(10),
-	}
-	
-	err := indexMapping.AddCustomTokenFilter("ngram_filter", ngramFilter)
-	if err != nil {
-		log.Printf("[ERROR] AddCustomTokenFilter failed: %v", err)
-		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
-		return nil
-	}
-	log.Printf("[DEBUG] Step 1: Registered custom token filter: ngram_filter (min=3)")
-	
-	// Step 2: Create custom analyzer using the registered filter
+	// Step 1: Create custom analyzer with NGramTokenizer
+	// NGramTokenizer creates n-grams from the input text directly
 	customAnalyzer := map[string]interface{}{
 		"type":      "custom",
-		"tokenizer": "unicode",
+		"tokenizer": "ngram_tokenizer",
 		"token_filters": []interface{}{
-			"ngram_filter",
+			"lowercase", // lowercase after n-gram creation
 		},
 	}
 	
-	err = indexMapping.AddCustomAnalyzer("ngram_analyzer", customAnalyzer)
+	// Register the analyzer with NGramTokenizer configuration
+	err := indexMapping.AddCustomAnalyzer("ngram_analyzer", customAnalyzer)
 	if err != nil {
-		log.Printf("[ERROR] AddCustomAnalyzer failed: %v", err)
+		log.Printf("[ERROR] AddCustomAnalyzer (ngram_analyzer) failed: %v", err)
 		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
 		return nil
 	}
-	log.Printf("[DEBUG] Step 2: Registered custom analyzer: ngram_analyzer")
-
-	// Step 3: Configure Field Mapping - assign analyzer to specific field
+	
+	// Also need to register the tokenizer itself with its config
+	ngramTokenizer := map[string]interface{}{
+		"type":     "ngram",
+		"min_gram": float64(3),
+		"max_gram": float64(10),
+	}
+	err = indexMapping.AddCustomTokenizer("ngram_tokenizer", ngramTokenizer)
+	if err != nil {
+		log.Printf("[ERROR] AddCustomTokenizer (ngram_tokenizer) failed: %v", err)
+		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
+		return nil
+	}
+	
+	log.Printf("[DEBUG] Step 1: Registered NGramTokenizer (min=3, max=10)")
+	log.Printf("[DEBUG] Step 2: Registered ngram_analyzer with lowercase filter")
+	
+	// Step 2: Configure Field Mapping - assign analyzer to specific field
 	fieldMapping := bleve.NewTextFieldMapping()
 	fieldMapping.Analyzer = "ngram_analyzer"
 	indexMapping.DefaultMapping.AddFieldMappingsAt("content", fieldMapping)
 	
 	log.Printf("[DEBUG] Step 3: Created field mapping for 'content' with ngram_analyzer")
 	
-	log.Printf("[DEBUG] Creating disk index with ngram analyzer...")
+	log.Printf("[DEBUG] Creating disk index with NGramTokenizer...")
 	
 	// Create the index on disk
 	idx.bleveIdx, err = bleve.New(indexPath, indexMapping)
