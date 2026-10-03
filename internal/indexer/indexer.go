@@ -68,6 +68,7 @@ func (idx *Indexer) InitBleveIndex() error {
 	// Create index mapping with standard analyzer
 	mapping := bleve.NewIndexMapping()
 
+	var err error
 	log.Printf("[DEBUG] Creating index with standard analyzer...")
 
 	// Use standard analyzer - no n-gram at index time
@@ -76,7 +77,7 @@ func (idx *Indexer) InitBleveIndex() error {
 	log.Printf("[DEBUG] Creating in-memory index...")
 
 	// Create in-memory index
-	idx.bleveIdx, err := bleve.NewMemOnly(mapping)
+	idx.bleveIdx, err = bleve.NewMemOnly(mapping)
 	if err != nil {
 		log.Printf("[ERROR] Failed to create index: %v", err)
 		return err
@@ -860,7 +861,7 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	log.Printf("[DEBUG] Executing Bleve search with MatchQuery (fuzzy)...")
 	matchQuery := bleve.NewMatchQuery(query)
 	matchQuery.Fuzziness = 1  // Allow 1 edit distance for typo handling
-	matchQuery.PrefixLength = 2  // Require at least 2 matching prefix chars
+	matchQuery.Prefix = 2  // Require at least 2 matching prefix chars
 
 	searchRequest := bleve.NewSearchRequest(matchQuery)
 	searchRequest.Size = k * 2
