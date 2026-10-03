@@ -157,9 +157,8 @@ func (idx *Indexer) InitBleveIndex() error {
 		return nil
 	}
 	
-	// Verify index has documents and field mappings
-	stats := idx.bleveIdx.Stats()
-	log.Printf("[DEBUG] Index created successfully, stats: searches=%d", stats.Searches)
+	// Verify index was created
+	log.Printf("[DEBUG] Index created successfully")
 	
 	log.Printf("[INFO] Bleve index initialized with Split Analyzer (exact + ngram)")
 	
