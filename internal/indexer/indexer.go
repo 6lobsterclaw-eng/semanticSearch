@@ -1071,8 +1071,13 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 			log.Printf("[DEBUG] Bolded exact query: %s", query)
 		} else if hit.Fragments != nil {
 			log.Printf("[DEBUG] Fragments available: %+v", hit.Fragments)
-			if fragments, ok := hit.Fragments["content"]; ok && len(fragments) > 0 {
-				log.Printf("[DEBUG] Fragment: %s", fragments[0])
+			// Check content_ngram field first (has n-gram matches), then content field
+			fragments, hasNgramFragments := hit.Fragments["content_ngram"]
+			if !hasNgramFragments || len(fragments) == 0 {
+				fragments, _ = hit.Fragments["content"]
+			}
+			if fragments != nil && len(fragments) > 0 {
+				log.Printf("[DEBUG] Using fragment: %s", fragments[0])
 				// Extract matched terms from fragment (words between <mark> tags)
 				frag := fragments[0]
 				// Find terms wrapped in <mark>...</mark>
