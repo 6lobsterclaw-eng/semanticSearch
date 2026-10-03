@@ -109,14 +109,30 @@ func (idx *Indexer) InitBleveIndex() error {
 		log.Printf("[DEBUG] Step 1b: Registered shingle_filter (min=2, max=2, no separator)")
 	}
 	
-	// Create n-gram analyzer using unicode tokenizer + shingle + ngram token filter
-	// Note: lowercase is built-in as a token filter in Bleve, we reference it by name
+	// Register length token filter to remove symbols/punctuation (keep only tokens with 2+ chars)
+	lengthFilter := map[string]interface{}{
+		"type":    "length",
+		"min":     2,
+		"max":     200,
+	}
+	
+	err = indexMapping.AddCustomTokenFilter("length_filter", lengthFilter)
+	if err != nil {
+		log.Printf("[WARN] AddCustomTokenFilter (length) failed: %v (continuing without it)", err)
+	} else {
+		log.Printf("[DEBUG] Step 1c: Registered length_filter (min=2, max=200)")
+	}
+	
+	// Create n-gram analyzer using letter tokenizer + filters
+	// letter tokenizer: only keeps Unicode letters (removes numbers, symbols)
+	// Then: lowercase → shingle → length → ngram
 	ngramAnalyzer := map[string]interface{}{
 		"type":      "custom",
-		"tokenizer": "unicode",
+		"tokenizer": "letter",
 		"token_filters": []interface{}{
 			"lowercase",
 			"shingle_filter",
+			"length_filter",
 			"ngram_filter",
 		},
 	}
