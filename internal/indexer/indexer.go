@@ -78,10 +78,10 @@ func (idx *Indexer) InitBleveIndex() error {
 	
 	// Step 1: Register custom n-gram token filter (regular n-gram, not edge)
 	// Regular n-gram creates substrings from ALL positions - handles compound words & typos
-	// Using min=3 to reduce false positives from short n-grams like "te", "er"
+	// Keep min=2 for better typo tolerance
 	ngramFilter := map[string]interface{}{
 		"type": "ngram",
-		"min":  float64(3),
+		"min":  float64(2),
 		"max":  float64(10),
 	}
 	
@@ -958,13 +958,30 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		log.Printf("[DEBUG]   Hit %d: ID=%s, Score=%.4f", i+1, hit.ID, hit.Score)
 	}
 	
+	// Find max score for relative filtering
+	maxScore := 0.0
+	for _, hit := range searchResult.Hits {
+		if hit.Score > maxScore {
+			maxScore = hit.Score
+		}
+	}
+	
+	// Relative score threshold: keep only hits with score > 30% of max score
+	// This filters weak matches while keeping strong ones
+	scoreRatioThreshold := 0.3
+	minScore := maxScore * scoreRatioThreshold
+	if minScore < 0.01 {
+		minScore = 0.01 // Absolute minimum
+	}
+	log.Printf("[DEBUG] Max score: %.4f, Relative threshold (30%%): %.4f", maxScore, minScore)
+	
 	var results []SearchResult
 	
-	// Process hits with score filtering inline
+	// Process hits with relative score filtering
 	hitIndex := 0
 	for _, hit := range searchResult.Hits {
 		// Skip low-scoring hits (false positives from loose n-gram matching)
-		if hit.Score < 0.1 {
+		if hit.Score < minScore {
 			continue
 		}
 		chunkID := hit.ID
