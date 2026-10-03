@@ -891,12 +891,14 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	matchQuery.FieldVal = "content"
 	// Don't set Analyzer - use the index's default (which is ngram_analyzer)
 
-	log.Printf("[DEBUG] searchKeyword: query=%q, field=%q", query, matchQuery.FieldVal)
-
+	log.Printf("[DEBUG] searchKeyword: query=%q, field=%q, index=%v", 
+		query, "content", idx.bleveIdx != nil)
+	
 	searchRequest := bleve.NewSearchRequest(matchQuery)
 	searchRequest.Size = k * 2
 	searchRequest.From = 0
 
+	log.Printf("[DEBUG] About to execute search...")
 	searchResult, err := idx.bleveIdx.Search(searchRequest)
 	if err != nil {
 		log.Printf("[ERROR] Bleve search error: %v", err)
