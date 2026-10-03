@@ -975,7 +975,7 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	log.Printf("[DEBUG] Total docs: %d, DocFreq: %v", len(idx.chunkMap), docFreq)
 	
 	// Calculate IDF weights and filter hits
-	var filteredHits []*search.DocumentMatch
+	var filteredHits []interface{} // Use generic type for hits
 	for _, hit := range searchResult.Hits {
 		chunkID := hit.ID
 		chunk, ok := idx.chunkMap[chunkID]
