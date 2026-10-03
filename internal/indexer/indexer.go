@@ -77,6 +77,8 @@ func (idx *Indexer) InitBleveIndex() error {
 	// Create new index mapping
 	indexMapping := bleve.NewIndexMapping()
 	
+	var err error
+	
 	// Step 1: Register lowercase token filter (required for n-gram analyzer)
 	lowercaseFilter := map[string]interface{}{
 		"type": "lower",
