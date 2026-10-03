@@ -96,6 +96,13 @@ func (idx *Indexer) InitBleveIndex() error {
 	}
 
 	log.Printf("[INFO] Bleve index initialized with N-gram analyzer")
+	
+	// Debug: verify index is not nil
+	if idx.bleveIdx != nil {
+		log.Printf("[DEBUG] Bleve index is initialized")
+	} else {
+		log.Printf("[ERROR] Bleve index is NIL!")
+	}
 	return nil
 }
 
@@ -294,6 +301,7 @@ func (idx *Indexer) indexFile(path string) (int, error) {
 					"source":   title,
 					"content":  childContent,
 				}
+				log.Printf("[DEBUG] Indexing doc: id=%s, content_len=%d", childID, len(childContent))
 				idx.bleveIdx.Index(childID, doc)
 			}
 		}
@@ -873,6 +881,9 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	matchQuery := bleve.NewMatchQuery(query)
 	matchQuery.FieldVal = "content"
 	matchQuery.Analyzer = "ngram_analyzer"
+
+	log.Printf("[DEBUG] searchKeyword: query=%q, field=%q, analyzer=%q", 
+		query, matchQuery.FieldVal, matchQuery.Analyzer)
 
 	searchRequest := bleve.NewSearchRequest(matchQuery)
 	searchRequest.Size = k * 2
