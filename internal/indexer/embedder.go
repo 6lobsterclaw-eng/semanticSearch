@@ -85,6 +85,11 @@ func (e *Embedder) Dim() int {
 	return e.dim
 }
 
+// Size returns the number of vectors in the index
+func (e *Embedder) Size() int {
+	return e.index.Count()
+}
+
 // Close releases resources
 func (e *Embedder) Close() error {
 	if e.model != nil {
