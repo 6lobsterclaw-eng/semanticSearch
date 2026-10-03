@@ -1078,15 +1078,26 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 			}
 			if fragments != nil && len(fragments) > 0 {
 				log.Printf("[DEBUG] Using fragment: %s", fragments[0])
-				// Extract matched terms from fragment (words between <mark> tags)
+				// Extract ALL matched terms from fragment (words between <mark> tags)
 				frag := fragments[0]
-				// Find terms wrapped in <mark>...</mark>
 				re := regexp.MustCompile(`<mark>([^<]+)</mark>`)
 				matches := re.FindAllStringSubmatch(frag, -1)
 				if len(matches) > 0 {
-					// Bold only the first matched term (most relevant)
-					matchedTerm := matches[0][1]
-					log.Printf("[DEBUG] Matched term from fragment: %s", matchedTerm)
+					// Find the BEST match: the one with highest similarity to query
+					// Use longest common substring ratio as similarity
+					bestMatch := ""
+					bestScore := 0.0
+					for _, m := range matches {
+						term := m[1]
+						// Calculate similarity: overlap of n-grams between query and term
+						score := calculateNgramOverlap(queryLower, strings.ToLower(term))
+						if score > bestScore {
+							bestScore = score
+							bestMatch = term
+						}
+					}
+					matchedTerm := bestMatch
+					log.Printf("[DEBUG] Best matched term from fragment: %s (score=%.2f)", matchedTerm, bestScore)
 					// Find and bold the actual term in the sentence
 					matchedLower := strings.ToLower(matchedTerm)
 					idx := strings.Index(extractLower, matchedLower)
@@ -1331,4 +1342,38 @@ func generateNgrams(s string, minLen, maxLen int) []string {
 		}
 	}
 	return ngrams
+}
+
+// calculateNgramOverlap calculates similarity between query and term using n-gram overlap
+// Returns a score between 0 and 1
+func calculateNgramOverlap(query, term string) float64 {
+	if len(query) == 0 || len(term) == 0 {
+		return 0
+	}
+
+	// Generate n-grams (min 2, max 4) for both query and term
+	queryNgrams := generateNgrams(query, 2, 4)
+	termNgrams := generateNgrams(term, 2, 4)
+
+	if len(queryNgrams) == 0 || len(termNgrams) == 0 {
+		return 0
+	}
+
+	// Count overlapping n-grams
+	overlap := 0
+	for _, qn := range queryNgrams {
+		for _, tn := range termNgrams {
+			if qn == tn {
+				overlap++
+				break
+			}
+		}
+	}
+
+	// Return ratio of overlap to max possible
+	maxNgrams := len(queryNgrams)
+	if len(termNgrams) > maxNgrams {
+		maxNgrams = len(termNgrams)
+	}
+	return float64(overlap) / float64(maxNgrams)
 }
