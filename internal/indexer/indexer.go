@@ -110,27 +110,29 @@ func (idx *Indexer) InitBleveIndex() error {
 	}
 	log.Printf("[DEBUG] Step 2: Registered ngram_analyzer")
 	
-	// Step 3: Create Split Analyzer mapping - TWO sub-fields per document field
+	// Debug: List all registered analyzers
+	analyzers := indexMapping.Analyzers()
+	log.Printf("[DEBUG] Registered analyzers: %v", analyzers)
+	
+	// Step 3: Create Split Analyzer mapping - add fields to default mapping
 	// - content: Standard analyzer (exact matching)
 	// - content_ngram: N-gram analyzer (fuzzy matching)
 	
-	// Default analyzer for exact matching
-	indexMapping.DefaultAnalyzer = "standard"
-	
-	// Create document mapping with multi-fields
-	docMapping := bleve.NewDocumentMapping()
+	// Use existing default mapping and add fields
+	defaultMap := indexMapping.DefaultMapping
 	
 	// content field - standard analyzer for exact matching
 	contentField := bleve.NewTextFieldMapping()
 	contentField.Analyzer = "standard"
-	docMapping.AddFieldMappingsAt("content", contentField)
+	defaultMap.AddFieldMappingsAt("content", contentField)
 	
 	// content_ngram field - n-gram analyzer for fuzzy matching
 	contentNgramField := bleve.NewTextFieldMapping()
 	contentNgramField.Analyzer = "ngram_analyzer"
-	docMapping.AddFieldMappingsAt("content_ngram", contentNgramField)
+	defaultMap.AddFieldMappingsAt("content_ngram", contentNgramField)
 	
-	indexMapping.DefaultMapping = docMapping
+	// Set default analyzer for unmatched fields
+	indexMapping.DefaultAnalyzer = "standard"
 	
 	log.Printf("[DEBUG] Step 3: Split Analyzer mapping - content (standard) + content_ngram (ngram)")
 	
