@@ -966,6 +966,7 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	for _, ng := range queryNgrams {
 		queryNgramSet[ng] = true
 	}
+	log.Printf("[DEBUG] Query %q generated %d n-grams: %v", query, len(queryNgrams), queryNgrams)
 	
 	for _, hit := range searchResult.Hits {
 		chunkID := hit.ID
@@ -984,12 +985,16 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		// Filter false positives: require at least 30% of query n-grams to match
 		contentLower := strings.ToLower(chunk.Sentence)
 		matchingNgrams := 0
+		matchedNgrams := []string{}
 		for ng := range queryNgramSet {
 			if strings.Contains(contentLower, ng) {
 				matchingNgrams++
+				matchedNgrams = append(matchedNgrams, ng)
 			}
 		}
 		matchRatio := float64(matchingNgrams) / float64(len(queryNgrams))
+		log.Printf("[DEBUG] Hit %s: content=%q, matched ngrams=%v (%.2f)", 
+			chunkID, contentLower[:min(100, len(contentLower))], matchedNgrams, matchRatio)
 		if matchRatio < 0.30 {
 			log.Printf("[DEBUG] Filtering out false positive: %s matchRatio=%.2f < 0.30", chunkID, matchRatio)
 			continue
