@@ -70,44 +70,37 @@ func NewIndexer(embedder interface {
 
 // InitBleveIndex initializes a Bleve index with Split Analyzer Strategy:
 // - content: Standard analyzer for exact BM25 matching
-// - content_ngram: N-gram analyzer for fuzzy/typo tolerance
+// - content_ngram: N-gram tokenizer for fuzzy/typo tolerance
 func (idx *Indexer) InitBleveIndex() error {
 	// Use temp directory for disk-based index
 	indexPath := filepath.Join(os.TempDir(), "bleve_ngram_index")
 	
 	// Remove existing index if any
 	os.RemoveAll(indexPath)
-	
+
 	// Create new index mapping
 	indexMapping := bleve.NewIndexMapping()
+
+	// Register n-gram TOKENIZER for fuzzy matching
+	// Uses bleve.NewNGramTokenizer(min=2, max=4) directly
+	// This creates n-grams at the tokenizer level, not filter level
+	ngramTokenizer := bleve.NewNGramTokenizer(2, 4)
 	
-	// Register n-gram TOKEN FILTER (not tokenizer) for fuzzy matching
-	// Per Bleve docs: "The n-gram token filter computes n-grams from each input token"
-	ngramFilter := map[string]interface{}{
-		"type": "ngram",
-		"min":  float64(2),
-		"max":  float64(4),
-	}
-	
-	err := indexMapping.AddCustomTokenFilter("ngram_filter", ngramFilter)
+	err := indexMapping.AddCustomTokenizer("ngram_tokenizer", ngramTokenizer)
 	if err != nil {
-		log.Printf("[ERROR] AddCustomTokenFilter (ngram) failed: %v", err)
+		log.Printf("[ERROR] AddCustomTokenizer (ngram_tokenizer) failed: %v", err)
 		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
 		return nil
 	}
-	log.Printf("[DEBUG] Step 1: Registered ngram_filter token filter (min=2, max=4)")
-	
-	// Create custom analyzer with unicode tokenizer + ngram filter
-	// Unicode tokenizer splits on whitespace/punctuation
-	// Then ngram_filter creates 2-4 character n-grams from each token
+	log.Printf("[DEBUG] Step 1: Registered ngram_tokenizer (min=2, max=4)")
+
+	// Create custom analyzer with ngram tokenizer
+	// NGramTokenizer directly splits text into n-grams
 	ngramAnalyzer := map[string]interface{}{
 		"type":      "custom",
-		"tokenizer": "unicode",
-		"token_filters": []interface{}{
-			"ngram_filter",
-		},
+		"tokenizer": "ngram_tokenizer",
 	}
-	
+
 	err = indexMapping.AddCustomAnalyzer("ngram_analyzer", ngramAnalyzer)
 	if err != nil {
 		log.Printf("[ERROR] AddCustomAnalyzer (ngram_analyzer) failed: %v", err)
