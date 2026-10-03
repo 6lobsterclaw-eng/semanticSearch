@@ -3,6 +3,7 @@ package indexer
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -53,10 +54,13 @@ func (idx *Indexer) Export(dirPath string) error {
 		// Move temp bleve index to export location
 		tempBlevePath := filepath.Join(os.TempDir(), "bleve_ngram_index")
 		if _, err := os.Stat(tempBlevePath); err == nil {
-			log.Printf("[EXPORT] Moving bleve from %s to %s", tempBlevePath, blevePath)
-			if err := os.Rename(tempBlevePath, blevePath); err != nil {
-				return fmt.Errorf("failed to move bleve index: %w", err)
+			log.Printf("[EXPORT] Copying bleve from %s to %s", tempBlevePath, blevePath)
+			// Use copy instead of rename (Windows can't rename across drives)
+			if err := copyDir(tempBlevePath, blevePath); err != nil {
+				return fmt.Errorf("failed to copy bleve index: %w", err)
 			}
+			// Remove temp
+			os.RemoveAll(tempBlevePath)
 		} else {
 			log.Printf("[EXPORT] Warning: temp bleve path not found: %s", tempBlevePath)
 		}
@@ -116,9 +120,10 @@ func (idx *Indexer) Import(dirPath string) error {
 		// Remove temp bleve path
 		tempBlevePath := filepath.Join(os.TempDir(), "bleve_ngram_index")
 		os.RemoveAll(tempBlevePath)
-		// Move imported bleve to temp location
-		if err := os.Rename(blevePath, tempBlevePath); err != nil {
-			return fmt.Errorf("failed to move bleve index: %w", err)
+		// Copy imported bleve to temp location (Windows can't rename across drives)
+		log.Printf("[IMPORT] Copying bleve from %s to %s", blevePath, tempBlevePath)
+		if err := copyDir(blevePath, tempBlevePath); err != nil {
+			return fmt.Errorf("failed to copy bleve index: %w", err)
 		}
 		// Open the bleve index
 		var err error
@@ -224,4 +229,38 @@ func (idx *Indexer) LegacyImport(path string) error {
 	}
 
 	return nil
+}
+
+// copyDir copies a directory recursively
+func copyDir(src, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		dstPath := filepath.Join(dst, rel)
+		if info.IsDir() {
+			return os.MkdirAll(dstPath, info.Mode())
+		}
+		return copyFile(path, dstPath)
+	})
+}
+
+// copyFile copies a single file
+func copyFile(src, dst string) error {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+	_, err = io.Copy(dstFile, srcFile)
+	return err
 }
