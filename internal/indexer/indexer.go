@@ -935,12 +935,16 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	matchQuery.Analyzer = "ngram_analyzer"
 	
 	log.Printf("[DEBUG] Executing MatchQuery: field=content, analyzer=ngram_analyzer, query=%q", query)
-	
+
 	searchRequest := bleve.NewSearchRequest(matchQuery)
 	searchRequest.Size = k * 2
 	searchRequest.From = 0
 	
-	searchResult, err := idx.bleveIdx.Search(searchRequest)
+	// Enable highlighting - this will return the matched terms from the index
+	searchRequest.Highlight = bleve.NewHighlightWithStyle("html")
+	searchRequest.Highlight.Fields = []string{"content"}
+	
+	log.Printf("[DEBUG] SearchRequest: Size=%d, Highlight enabled", searchRequest.Size)
 	if err != nil {
 		log.Printf("[ERROR] Bleve search error: %v", err)
 		return idx.searchKeywordFallback(query, k)
@@ -961,7 +965,19 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 			continue
 		}
 		
-		extract := boldKeyword(chunk.Sentence, query)
+		// Use highlighted text if available, otherwise fallback to boldKeyword
+		extract := chunk.Sentence
+		if hit.Locations != nil {
+			// Use the highlighted fragments from Bleve
+			if fragments, ok := hit.Fragments["content"]; ok && len(fragments) > 0 {
+				extract = fragments[0]
+				log.Printf("[DEBUG] Using highlighted fragment for %s: %s", chunkID, extract)
+			}
+		}
+		if extract == chunk.Sentence {
+			// No highlight, use boldKeyword as fallback
+			extract = boldKeyword(chunk.Sentence, query)
+		}
 		location := findLocation(chunkID, chunk.Source)
 		
 		results = append(results, SearchResult{
