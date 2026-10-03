@@ -1015,7 +1015,7 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	
 	log.Printf("[DEBUG] Search completed: %d hits found (BM25 scoring)", len(searchResult.Hits))
 	for i, hit := range searchResult.Hits {
-		log.Printf("[DEBUG]   Hit %d: ID=%s, Score=%.4f", i+1, hit.ID, hit.Score)
+		log.Printf("[DEBUG]   Hit %d: ID=%s, Score=%.4f, HasFragments=%v", i+1, hit.ID, hit.Score, hit.Fragments != nil)
 	}
 
 	var results []SearchResult
@@ -1039,7 +1039,7 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 			continue
 		}
 	
-		log.Printf("[DEBUG] Using chunk: ID=%s, Sentence len=%d", chunk.ID, len(chunk.Sentence))
+		log.Printf("[DEBUG] Using chunk: ID=%s, Sentence len=%d, Sentence=%q", chunk.ID, len(chunk.Sentence), chunk.Sentence[:min(100, len(chunk.Sentence))])
 	
 		// Filter false positives: require at least 30% of query n-grams to match
 		// This allows fuzzy matches (contilever→cantilever) while filtering false positives
