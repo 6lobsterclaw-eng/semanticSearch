@@ -1034,9 +1034,12 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		
 		chunk, ok := idx.chunkMap[chunkID]
 		if !ok {
+			log.Printf("[DEBUG] WARNING: chunkMap miss for %s", chunkID)
 			continue
 		}
-		
+	
+		log.Printf("[DEBUG] Using chunk: ID=%s, Sentence len=%d", chunk.ID, len(chunk.Sentence))
+	
 		// Filter false positives: require at least 30% of query n-grams to match
 		// This allows fuzzy matches (contilever→cantilever) while filtering false positives
 		contentLower := strings.ToLower(chunk.Sentence)
