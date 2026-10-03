@@ -65,8 +65,8 @@ func NewIndexer(embedder interface {
 
 // InitBleveIndex initializes a Bleve index with N-gram tokenization for fuzzy keyword search
 func (idx *Indexer) InitBleveIndex() error {
-	// Use disk-based index - might handle custom analyzers better
-	indexPath := "bleve_ngram_index"
+	// Use temp directory for disk-based index
+	indexPath := filepath.Join(os.TempDir(), "bleve_ngram_index")
 	
 	// Remove existing index if any
 	os.RemoveAll(indexPath)
@@ -92,7 +92,10 @@ func (idx *Indexer) InitBleveIndex() error {
 		return nil
 	}
 
+	// Set as default for ALL fields
 	mapping.DefaultAnalyzer = "ngram_analyzer"
+	
+	log.Printf("[DEBUG] Creating disk index with ngram analyzer...")
 	
 	// Use disk-based index
 	idx.bleveIdx, err = bleve.New(indexPath, mapping)
