@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/blevesearch/bleve/v2"
+	bleveMapping "github.com/blevesearch/bleve/v2/mapping"
 	"github.com/ledongthuc/pdf"
 	"github.com/gomarkdown/markdown"
 	"github.com/gomarkdown/markdown/parser"
@@ -108,14 +109,6 @@ func (idx *Indexer) InitBleveIndex() error {
 		return nil
 	}
 	log.Printf("[DEBUG] Step 2: Registered custom analyzer: ngram_analyzer")
-
-	// Debug: List all registered analyzers
-	analyzerNames, _ := indexMapping.AnalyzerNames()
-	log.Printf("[DEBUG] Registered analyzers: %v", analyzerNames)
-	
-	// Debug: List all registered token filters
-	filterNames, _ := indexMapping.TokenFilterNames()
-	log.Printf("[DEBUG] Registered token filters: %v", filterNames)
 
 	// Step 3: Configure Field Mapping - assign analyzer to specific field
 	fieldMapping := bleve.NewTextFieldMapping()
@@ -340,21 +333,13 @@ func (idx *Indexer) indexFile(path string) (int, error) {
 					"content":  childContent,
 				}
 				
-				log.Printf("[DEBUG BLEVE] Indexing doc: id=%s", childID)
-				log.Printf("[DEBUG BLEVE]   content = %q", childContent[:min(100, len(childContent))])
-				
-				// Debug: Get analyzer for content field
-				impl, ok := idx.bleveIdx.Mapping().(*bleveMapping.IndexMappingImpl)
-				if ok {
-					if field, fok := impl.DefaultMapping.Fields["content"]; fok {
-						log.Printf("[DEBUG BLEVE]   field 'content' analyzer = %s", field.Analyzer)
-					}
-				}
+				log.Printf("[DEBUG] Indexing doc: id=%s", childID)
+				log.Printf("[DEBUG]   content = %q", childContent[:min(100, len(childContent))])
 				
 				if err := idx.bleveIdx.Index(childID, doc); err != nil {
 					log.Printf("[ERROR] Bleve index error: %v", err)
 				} else {
-					log.Printf("[DEBUG BLEVE] Successfully indexed: %s", childID)
+					log.Printf("[DEBUG] Successfully indexed: %s", childID)
 				}
 			} else {
 				log.Printf("[WARN] Bleve index is nil, skipping indexing")
@@ -925,7 +910,7 @@ func (idx *Indexer) searchSemantic(query string, k int) []SearchResult {
 // searchKeyword performs keyword search using Bleve with N-gram tokenization
 // N-gram was applied at index time, so we need to use N-gram analyzer at query time too
 func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
-	log.Printf("[DEBUG BLEVE] searchKeyword: query=%q", query)
+	log.Printf("[DEBUG] searchKeyword: query=%q", query)
 	
 	if idx.bleveIdx == nil {
 		log.Printf("[WARN] Bleve index not initialized, falling back to substring")
@@ -934,26 +919,23 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	
 	// Debug: Check index stats
 	stats := idx.bleveIdx.Stats()
-	log.Printf("[DEBUG BLEVE] Index stats: %+v", stats)
+	log.Printf("[DEBUG] Index stats: %+v", stats)
 	
 	// Debug: Check field mapping
 	impl, ok := idx.bleveIdx.Mapping().(*bleveMapping.IndexMappingImpl)
 	if ok {
-		log.Printf("[DEBUG BLEVE] Index has %d fields in default mapping", len(impl.DefaultMapping.Fields))
+		log.Printf("[DEBUG] Index has %d fields in default mapping", len(impl.DefaultMapping.Fields))
 		for name, field := range impl.DefaultMapping.Fields {
-			log.Printf("[DEBUG BLEVE]   Field: %s, Analyzer: %s", name, field.Analyzer)
+			log.Printf("[DEBUG]   Field: %s, Analyzer: %s", name, field.Analyzer)
 		}
 	}
-	
-	// Debug: Try to inspect what terms are indexed
-	log.Printf("[DEBUG BLEVE] Query terms will be analyzed by ngram_analyzer")
 	
 	// Use MatchQuery with explicit ngram_analyzer
 	matchQuery := bleve.NewMatchQuery(query)
 	matchQuery.FieldVal = "content"
 	matchQuery.Analyzer = "ngram_analyzer"
 	
-	log.Printf("[DEBUG BLEVE] Executing MatchQuery: field=content, analyzer=ngram_analyzer, query=%q", query)
+	log.Printf("[DEBUG] Executing MatchQuery: field=content, analyzer=ngram_analyzer, query=%q", query)
 	
 	searchRequest := bleve.NewSearchRequest(matchQuery)
 	searchRequest.Size = k * 2
@@ -965,9 +947,9 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		return idx.searchKeywordFallback(query, k)
 	}
 	
-	log.Printf("[DEBUG BLEVE] Search completed: %d hits found", len(searchResult.Hits))
+	log.Printf("[DEBUG] Search completed: %d hits found", len(searchResult.Hits))
 	for i, hit := range searchResult.Hits {
-		log.Printf("[DEBUG BLEVE]   Hit %d: ID=%s, Score=%.4f", i+1, hit.ID, hit.Score)
+		log.Printf("[DEBUG]   Hit %d: ID=%s, Score=%.4f", i+1, hit.ID, hit.Score)
 	}
 	
 	var results []SearchResult
