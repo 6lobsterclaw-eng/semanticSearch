@@ -76,8 +76,21 @@ func (idx *Indexer) InitBleveIndex() error {
 	// Create new index mapping
 	indexMapping := bleve.NewIndexMapping()
 	
-	// Step 1: Create custom analyzer with NGramTokenizer
-	// NGramTokenizer creates n-grams from the input text directly
+	// Step 1: Register the NGramTokenizer FIRST (before analyzer that uses it)
+	ngramTokenizer := map[string]interface{}{
+		"type":     "ngram",
+		"min_gram": float64(3),
+		"max_gram": float64(10),
+	}
+	err := indexMapping.AddCustomTokenizer("ngram_tokenizer", ngramTokenizer)
+	if err != nil {
+		log.Printf("[ERROR] AddCustomTokenizer (ngram_tokenizer) failed: %v", err)
+		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
+		return nil
+	}
+	log.Printf("[DEBUG] Step 1: Registered NGramTokenizer (min=3, max=10)")
+	
+	// Step 2: Create custom analyzer that uses the tokenizer
 	customAnalyzer := map[string]interface{}{
 		"type":      "custom",
 		"tokenizer": "ngram_tokenizer",
@@ -86,31 +99,15 @@ func (idx *Indexer) InitBleveIndex() error {
 		},
 	}
 	
-	// Register the analyzer with NGramTokenizer configuration
-	err := indexMapping.AddCustomAnalyzer("ngram_analyzer", customAnalyzer)
+	err = indexMapping.AddCustomAnalyzer("ngram_analyzer", customAnalyzer)
 	if err != nil {
 		log.Printf("[ERROR] AddCustomAnalyzer (ngram_analyzer) failed: %v", err)
 		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
 		return nil
 	}
-	
-	// Also need to register the tokenizer itself with its config
-	ngramTokenizer := map[string]interface{}{
-		"type":     "ngram",
-		"min_gram": float64(3),
-		"max_gram": float64(10),
-	}
-	err = indexMapping.AddCustomTokenizer("ngram_tokenizer", ngramTokenizer)
-	if err != nil {
-		log.Printf("[ERROR] AddCustomTokenizer (ngram_tokenizer) failed: %v", err)
-		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
-		return nil
-	}
-	
-	log.Printf("[DEBUG] Step 1: Registered NGramTokenizer (min=3, max=10)")
 	log.Printf("[DEBUG] Step 2: Registered ngram_analyzer with lowercase filter")
 	
-	// Step 2: Configure Field Mapping - assign analyzer to specific field
+	// Step 3: Configure Field Mapping - assign analyzer to specific field
 	fieldMapping := bleve.NewTextFieldMapping()
 	fieldMapping.Analyzer = "ngram_analyzer"
 	indexMapping.DefaultMapping.AddFieldMappingsAt("content", fieldMapping)
