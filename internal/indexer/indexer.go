@@ -961,6 +961,12 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	
 	// Process hits - skip parent chunks, use BM25 scores directly
 	hitIndex := 0
+	queryNgrams := generateNgrams(query, 3, 10)
+	queryNgramSet := make(map[string]bool)
+	for _, ng := range queryNgrams {
+		queryNgramSet[ng] = true
+	}
+	
 	for _, hit := range searchResult.Hits {
 		chunkID := hit.ID
 		
@@ -975,7 +981,21 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 			continue
 		}
 		
-		log.Printf("[DEBUG] Using BM25 score for %s: %.4f", chunkID, hit.Score)
+		// Filter false positives: require at least 30% of query n-grams to match
+		contentLower := strings.ToLower(chunk.Sentence)
+		matchingNgrams := 0
+		for ng := range queryNgramSet {
+			if strings.Contains(contentLower, ng) {
+				matchingNgrams++
+			}
+		}
+		matchRatio := float64(matchingNgrams) / float64(len(queryNgrams))
+		if matchRatio < 0.30 {
+			log.Printf("[DEBUG] Filtering out false positive: %s matchRatio=%.2f < 0.30", chunkID, matchRatio)
+			continue
+		}
+		
+		log.Printf("[DEBUG] Using BM25 score for %s: %.4f (matchRatio=%.2f)", chunkID, hit.Score, matchRatio)
 		
 		// Use original sentence, try to bold the matched term
 		extract := chunk.Sentence
