@@ -80,7 +80,7 @@ func (idx *Indexer) InitBleveIndex() error {
 	if err != nil {
 		log.Printf("[WARN] Failed to add custom ngram analyzer: %v, falling back to default", err)
 		// Fall back to creating index without custom mapping
-		idx.bleveIdx, _ = bleve.NewMemUsing(nil, nil)
+		idx.bleveIdx, _ = bleve.NewMemOnly(nil)
 	} else {
 		// Apply custom analyzer to content field
 		contentField := bleve.NewTextFieldMapping()
@@ -88,7 +88,7 @@ func (idx *Indexer) InitBleveIndex() error {
 		mapping.DefaultMapping.AddFieldMappingsAt("content", contentField)
 
 		// Create in-memory index with custom mapping
-		idx.bleveIdx, _ = bleve.NewMemUsing(mapping, nil)
+		idx.bleveIdx, _ = bleve.NewMemOnly(mapping)
 	}
 
 	log.Printf("[INFO] Bleve index initialized with N-gram tokenizer (min=2, max=4) for fuzzy keyword search")
@@ -865,12 +865,13 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		return idx.searchKeywordFallback(query, k)
 	}
 
-	// Create a search request with N-gram analyzer for query parsing
-	// This ensures query terms are tokenized the same way as indexed content
-	searchRequest := bleve.NewSearchRequestOptions(nil, k*2, 0, false)
-	searchRequest.Query = bleve.NewMatchQuery(query)
-	// Use N-gram analyzer for query to match indexed n-grams
-	searchRequest.Analyzer = "ngram_analyzer"
+	// Use MatchQuery with N-gram analyzer to match indexed n-grams
+	matchQuery := bleve.NewMatchQuery(query)
+	matchQuery.Analyzer = "ngram_analyzer"
+
+	searchRequest := bleve.NewSearchRequest(matchQuery)
+	searchRequest.Size = k * 2
+	searchRequest.From = 0
 
 	searchResult, err := idx.bleveIdx.Search(searchRequest)
 	if err != nil {
