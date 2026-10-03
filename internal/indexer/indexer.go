@@ -969,7 +969,8 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		
 		// Use highlighted text if available, otherwise fallback to boldKeyword
 		extract := chunk.Sentence
-		if hit.Locations != nil {
+		log.Printf("[DEBUG] Hit %d: ID=%s, Locations=%v, Fragments=%v", i+1, hit.ID, hit.Locations != nil, hit.Fragments)
+		if hit.Fragments != nil {
 			// Use the highlighted fragments from Bleve
 			if fragments, ok := hit.Fragments["content"]; ok && len(fragments) > 0 {
 				extract = fragments[0]
@@ -979,7 +980,11 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 				extract = strings.ReplaceAll(extract, "<mark>", "<b>")
 				extract = strings.ReplaceAll(extract, "</mark>", "</b>")
 				log.Printf("[DEBUG] Using highlighted fragment for %s: %s", chunkID, extract)
+			} else {
+				log.Printf("[DEBUG] No content fragments found for %s", chunkID)
 			}
+		} else {
+			log.Printf("[DEBUG] No fragments at all for %s", chunkID)
 		}
 		if extract == chunk.Sentence {
 			// No highlight, use boldKeyword as fallback
