@@ -66,7 +66,7 @@ func NewIndexer(embedder interface {
 
 // InitBleveIndex initializes a Bleve index with Split Analyzer Strategy:
 // - content: Standard analyzer for exact BM25 matching
-// - content_ngram: N-gram tokenizer for fuzzy/typo tolerance
+// - content_ngram: N-gram analyzer for fuzzy/typo tolerance
 func (idx *Indexer) InitBleveIndex() error {
 	// Use temp directory for disk-based index
 	indexPath := filepath.Join(os.TempDir(), "bleve_ngram_index")
@@ -77,28 +77,30 @@ func (idx *Indexer) InitBleveIndex() error {
 	// Create new index mapping
 	indexMapping := bleve.NewIndexMapping()
 	
-	// Register n-gram tokenizer for fuzzy matching
-	// This uses AddCustomTokenizer (not token filter)
-	ngramTokenizer := map[string]interface{}{
+	// Register n-gram TOKEN FILTER (not tokenizer) for fuzzy matching
+	// Per Bleve docs: "The n-gram token filter computes n-grams from each input token"
+	ngramFilter := map[string]interface{}{
 		"type": "ngram",
 		"min":  float64(2),
 		"max":  float64(4),
 	}
 	
-	err := indexMapping.AddCustomTokenizer("ngram_tokenizer", ngramTokenizer)
+	err := indexMapping.AddCustomTokenFilter("ngram_filter", ngramFilter)
 	if err != nil {
-		log.Printf("[ERROR] AddCustomTokenizer (ngram) failed: %v", err)
+		log.Printf("[ERROR] AddCustomTokenFilter (ngram) failed: %v", err)
 		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
 		return nil
 	}
-	log.Printf("[DEBUG] Step 1: Registered ngram_tokenizer (min=2, max=4)")
+	log.Printf("[DEBUG] Step 1: Registered ngram_filter token filter (min=2, max=4)")
 	
-	// Create n-gram analyzer using the custom tokenizer
+	// Create n-gram analyzer using unicode tokenizer + ngram token filter
+	// Note: lowercase is built-in as a token filter in Bleve, we reference it by name
 	ngramAnalyzer := map[string]interface{}{
 		"type":      "custom",
-		"tokenizer": "ngram_tokenizer",
+		"tokenizer": "unicode",
 		"token_filters": []interface{}{
 			"lowercase",
+			"ngram_filter",
 		},
 	}
 	
@@ -108,7 +110,7 @@ func (idx *Indexer) InitBleveIndex() error {
 		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
 		return nil
 	}
-	log.Printf("[DEBUG] Step 2: Registered ngram_analyzer with ngram_tokenizer")
+	log.Printf("[DEBUG] Step 2: Registered ngram_analyzer with ngram_filter")
 	
 	// Step 3: Create Split Analyzer mapping - add fields to default mapping
 	// - content: Standard analyzer (exact matching)
@@ -938,7 +940,7 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	
 	// Debug: Check index stats
 	stats := idx.bleveIdx.Stats()
-	log.Printf("[DEBUG] Index stats: %+v", stats)
+	log.Printf("[DEBUG] Index stats: docCount=%d", stats.DocumentCount())
 	
 	// Debug: Check field mapping
 	impl, ok := idx.bleveIdx.Mapping().(*bleveMapping.IndexMappingImpl)
@@ -947,6 +949,8 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		for name, field := range impl.DefaultMapping.Fields {
 			log.Printf("[DEBUG]   Field: %s, Analyzer: %s", name, field.Analyzer)
 		}
+	} else {
+		log.Printf("[DEBUG] Could not get detailed field mapping")
 	}
 	
 	// Use Split Analyzer Strategy: query content field first (exact), then content_ngram (fuzzy)
@@ -969,6 +973,10 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	exactResult, exactErr := idx.bleveIdx.Search(exactReq)
 	
 	var searchResult *bleve.SearchResult
+	
+	if exactErr != nil {
+		log.Printf("[DEBUG] Exact search error: %v", exactErr)
+	}
 	
 	if exactErr == nil && len(exactResult.Hits) > 0 {
 		log.Printf("[DEBUG] Exact match found %d hits", len(exactResult.Hits))
@@ -994,6 +1002,7 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 			log.Printf("[ERROR] Fuzzy search also failed: %v", exactErr)
 			return idx.searchKeywordFallback(query, k)
 		}
+		log.Printf("[DEBUG] Fuzzy search found %d hits", len(searchResult.Hits))
 	}
 	
 	log.Printf("[DEBUG] Search completed: %d hits found (BM25 scoring)", len(searchResult.Hits))
