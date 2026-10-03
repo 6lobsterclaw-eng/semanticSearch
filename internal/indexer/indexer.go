@@ -64,8 +64,9 @@ func NewIndexer(embedder interface {
 	}
 }
 
-// InitBleveIndex initializes a Bleve index with N-gram tokenization for fuzzy keyword search
-// Using ngram token filter for proper n-gram support
+// InitBleveIndex initializes a Bleve index with Split Analyzer Strategy:
+// - content: Standard analyzer for exact BM25 matching
+// - content_ngram: N-gram analyzer for fuzzy/typo tolerance
 func (idx *Indexer) InitBleveIndex() error {
 	// Use temp directory for disk-based index
 	indexPath := filepath.Join(os.TempDir(), "bleve_ngram_index")
@@ -76,8 +77,7 @@ func (idx *Indexer) InitBleveIndex() error {
 	// Create new index mapping
 	indexMapping := bleve.NewIndexMapping()
 	
-	// Step 1: Register custom n-gram token filter (regular n-gram, not edge)
-	// This creates n-grams from tokens AFTER tokenization
+	// Step 1: Register n-gram token filter
 	ngramFilter := map[string]interface{}{
 		"type": "ngram",
 		"min":  float64(2),
@@ -86,15 +86,14 @@ func (idx *Indexer) InitBleveIndex() error {
 	
 	err := indexMapping.AddCustomTokenFilter("ngram_filter", ngramFilter)
 	if err != nil {
-		log.Printf("[ERROR] AddCustomTokenFilter (ngram_filter) failed: %v", err)
+		log.Printf("[ERROR] AddCustomTokenFilter failed: %v", err)
 		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
 		return nil
 	}
-	log.Printf("[DEBUG] Step 1: Registered ngram token filter (min=3, max=10)")
+	log.Printf("[DEBUG] Step 1: Registered ngram_filter (min=2, max=4)")
 	
-	// Step 2: Create custom analyzer that uses unicode tokenizer + ngram filter
-	// Order: unicode tokenizer -> lowercase -> ngram filter
-	customAnalyzer := map[string]interface{}{
+	// Step 2: Register n-gram analyzer
+	ngramAnalyzer := map[string]interface{}{
 		"type":      "custom",
 		"tokenizer": "unicode",
 		"token_filters": []interface{}{
@@ -103,21 +102,39 @@ func (idx *Indexer) InitBleveIndex() error {
 		},
 	}
 	
-	err = indexMapping.AddCustomAnalyzer("ngram_analyzer", customAnalyzer)
+	err = indexMapping.AddCustomAnalyzer("ngram_analyzer", ngramAnalyzer)
 	if err != nil {
-		log.Printf("[ERROR] AddCustomAnalyzer (ngram_analyzer) failed: %v", err)
+		log.Printf("[ERROR] AddCustomAnalyzer failed: %v", err)
 		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
 		return nil
 	}
-	log.Printf("[DEBUG] Step 2: Registered ngram_analyzer (unicode + lowercase + ngram_filter)")
+	log.Printf("[DEBUG] Step 2: Registered ngram_analyzer")
 	
-	// Step 3: Set as DEFAULT analyzer for the entire index
-	// This is more reliable than field-specific mapping
-	indexMapping.DefaultAnalyzer = "ngram_analyzer"
+	// Step 3: Create Split Analyzer mapping - TWO sub-fields per document field
+	// - content: Standard analyzer (exact matching)
+	// - content_ngram: N-gram analyzer (fuzzy matching)
 	
-	log.Printf("[DEBUG] Step 3: Set default analyzer to ngram_analyzer")
+	// Default analyzer for exact matching
+	indexMapping.DefaultAnalyzer = "standard"
 	
-	log.Printf("[DEBUG] Creating disk index with ngram filter...")
+	// Create document mapping with multi-fields
+	docMapping := bleve.NewDocumentMapping()
+	
+	// content field - standard analyzer for exact matching
+	contentField := bleve.NewTextFieldMapping()
+	contentField.Analyzer = "standard"
+	docMapping.AddFieldMappingsAt("content", contentField)
+	
+	// content_ngram field - n-gram analyzer for fuzzy matching
+	contentNgramField := bleve.NewTextFieldMapping()
+	contentNgramField.Analyzer = "ngram_analyzer"
+	docMapping.AddFieldMappingsAt("content_ngram", contentNgramField)
+	
+	indexMapping.DefaultMapping = docMapping
+	
+	log.Printf("[DEBUG] Step 3: Split Analyzer mapping - content (standard) + content_ngram (ngram)")
+	
+	log.Printf("[DEBUG] Creating disk index with Split Analyzer...")
 	
 	// Create the index on disk
 	idx.bleveIdx, err = bleve.New(indexPath, indexMapping)
@@ -127,7 +144,7 @@ func (idx *Indexer) InitBleveIndex() error {
 		return nil
 	}
 
-	log.Printf("[INFO] Bleve index initialized with N-gram analyzer (disk-based)")
+	log.Printf("[INFO] Bleve index initialized with Split Analyzer (exact + ngram)")
 	
 	if idx.bleveIdx != nil {
 		log.Printf("[DEBUG] Bleve index created successfully")
@@ -328,9 +345,10 @@ func (idx *Indexer) indexFile(path string) (int, error) {
 			// Index in Bleve for fuzzy keyword search
 			if idx.bleveIdx != nil {
 				doc := map[string]interface{}{
-					"id":       childID,
-					"source":   title,
-					"content":  childContent,
+					"id":           childID,
+					"source":       title,
+					"content":      childContent,
+					"content_ngram": childContent, // N-gram field for fuzzy matching
 				}
 				
 				log.Printf("[DEBUG] Indexing doc: id=%s", childID)
@@ -930,19 +948,37 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		}
 	}
 	
-	// Use MatchQuery with ngram_analyzer (set as default)
-	matchQuery := bleve.NewMatchQuery(query)
-	matchQuery.Analyzer = "ngram_analyzer"
+	// Use Split Analyzer Strategy: query BOTH fields with boosting
+	// - content: Standard analyzer (exact match) - higher priority
+	// - content_ngram: N-gram analyzer (fuzzy match) - fallback
 	
-	log.Printf("[DEBUG] Executing MatchQuery: analyzer=ngram_analyzer, query=%q", query)
+	// Create BoolQuery with should (OR) - boosts exact match higher
+	boolQuery := bleve.NewBoolQuery()
+	
+	// Exact match query on content field (boosted)
+	exactQuery := bleve.NewMatchQuery(query)
+	exactQuery.FieldVal = "content"
+	exactQuery.Analyzer = "standard"
+	boolQuery.Should = append(boolQuery.Should, exactQuery)
+	
+	// Fuzzy match query on content_ngram field (lower boost)
+	fuzzyQuery := bleve.NewMatchQuery(query)
+	fuzzyQuery.FieldVal = "content_ngram"
+	fuzzyQuery.Analyzer = "ngram_analyzer"
+	boolQuery.Should = append(boolQuery.Should, fuzzyQuery)
+	
+	// Set minimum should match to 1 (either can match)
+	boolQuery.MinShould = 1
+	
+	log.Printf("[DEBUG] Using Split Analyzer: bool query (content[boost] + content_ngram[fallback]), query=%q", query)
 
-	searchRequest := bleve.NewSearchRequest(matchQuery)
+	searchRequest := bleve.NewSearchRequest(boolQuery)
 	searchRequest.Size = k * 2
 	searchRequest.From = 0
 	
 	// Enable highlighting - we extract matched terms for manual bolding
 	searchRequest.Highlight = bleve.NewHighlightWithStyle("html")
-	searchRequest.Highlight.Fields = []string{"content"}
+	searchRequest.Highlight.Fields = []string{"content", "content_ngram"}
 	
 	log.Printf("[DEBUG] SearchRequest: Size=%d, Highlight enabled", searchRequest.Size)
 	
