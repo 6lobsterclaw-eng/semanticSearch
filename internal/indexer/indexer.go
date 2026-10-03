@@ -945,6 +945,8 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	searchRequest.Highlight.Fields = []string{"content"}
 	
 	log.Printf("[DEBUG] SearchRequest: Size=%d, Highlight enabled", searchRequest.Size)
+	
+	searchResult, err := idx.bleveIdx.Search(searchRequest)
 	if err != nil {
 		log.Printf("[ERROR] Bleve search error: %v", err)
 		return idx.searchKeywordFallback(query, k)
