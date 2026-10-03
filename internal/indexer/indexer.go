@@ -2,7 +2,6 @@ package indexer
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math"
