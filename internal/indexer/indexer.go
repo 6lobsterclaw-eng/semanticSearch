@@ -95,7 +95,6 @@ func (idx *Indexer) InitBleveIndex() error {
 		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
 		return nil
 	}
-	log.Printf("[DEBUG] Step 1: Registered ngram_filter (min=2, max=4)")
 
 	// Create custom analyzer with ngram filter
 	// Unicode tokenizer splits on whitespace/punctuation
@@ -112,8 +111,7 @@ func (idx *Indexer) InitBleveIndex() error {
 		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
 		return nil
 	}
-	log.Printf("[DEBUG] Step 2: Registered ngram_analyzer with ngram_filter")
-	
+
 	// Step 3: Create Split Analyzer mapping - add fields to default mapping
 	// - content: Standard analyzer (exact matching)
 	// - content_ngram: N-gram analyzer (fuzzy matching)
@@ -133,11 +131,8 @@ func (idx *Indexer) InitBleveIndex() error {
 	
 	// Set default analyzer for unmatched fields
 	indexMapping.DefaultAnalyzer = "standard"
-	
-	log.Printf("[DEBUG] Step 3: Split Analyzer mapping - content (standard) + content_ngram (ngram)")
-	
-	log.Printf("[DEBUG] Creating disk index with Split Analyzer...")
-	
+
+
 	// Create the index on disk
 	idx.bleveIdx, err = bleve.New(indexPath, indexMapping)
 	if err != nil {
@@ -147,12 +142,10 @@ func (idx *Indexer) InitBleveIndex() error {
 	}
 	
 	// Verify index was created
-	log.Printf("[DEBUG] Index created successfully")
 	
 	log.Printf("[INFO] Bleve index initialized with Split Analyzer (exact + ngram)")
 	
 	if idx.bleveIdx != nil {
-		log.Printf("[DEBUG] Bleve index created successfully")
 	} else {
 		log.Printf("[ERROR] Bleve index is NIL!")
 	}
@@ -356,13 +349,10 @@ func (idx *Indexer) indexFile(path string) (int, error) {
 					"content_ngram": childContent, // N-gram field for fuzzy matching
 				}
 				
-				log.Printf("[DEBUG] Indexing doc: id=%s", childID)
-				log.Printf("[DEBUG]   content = %q", childContent[:min(100, len(childContent))])
 				
 				if err := idx.bleveIdx.Index(childID, doc); err != nil {
 					log.Printf("[ERROR] Bleve index error: %v", err)
 				} else {
-					log.Printf("[DEBUG] Successfully indexed: %s", childID)
 				}
 			} else {
 				log.Printf("[WARN] Bleve index is nil, skipping indexing")
@@ -781,7 +771,6 @@ func (idx *Indexer) searchSemanticWeighted(query string, k int) []SearchResult {
 		// Calculate max similarity including question embeddings
 		maxSim := calculateMaxSimilarity(chunk, vec, idx.embedder)
 
-		log.Printf("[DEBUG] Chunk %s: raw=%.4f, maxWithQuestions=%.4f", chunkID, r.Relevance, maxSim)
 
 		parentChildren[chunk.ParentID] = append(parentChildren[chunk.ParentID], childResult{
 			chunkID: chunkID,
@@ -864,7 +853,6 @@ func (idx *Indexer) searchSemanticWeighted(query string, k int) []SearchResult {
 			}
 		}
 		
-		log.Printf("[DEBUG] Parent %s: schild=%.4f, sparent=%.4f, final=%.4f", 
 			p.parentID, p.schildMax, p.sparent, p.finalScore)
 		
 		// Show child chunk extract (not parent)
@@ -893,7 +881,6 @@ func calculateVectorSimilarity(text, query string, queryVec []float32, embedder 
 	// Get embedding for the text
 	textVec, err := embedder.Embed(text)
 	if err != nil {
-		log.Printf("[DEBUG] Failed to embed text for similarity: %v", err)
 		return 0
 	}
 	
@@ -978,7 +965,6 @@ func (idx *Indexer) searchSemantic(query string, k int) []SearchResult {
 // N-gram was applied at index time, so we need to use N-gram analyzer at query time too
 func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	log.Printf("[DEBUG Indexer.searchKeyword] Query: %q, k: %d", query, k)
-	log.Printf("[DEBUG] searchKeyword: query=%q", query)
 	
 	if idx.bleveIdx == nil {
 		log.Printf("[WARN] Bleve index not initialized, falling back to substring")
@@ -986,17 +972,13 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	}
 	
 	// Debug: Check index stats
-	log.Printf("[DEBUG] Index stats checked")
 	
 	// Debug: Check field mapping
 	impl, ok := idx.bleveIdx.Mapping().(*bleveMapping.IndexMappingImpl)
 	if ok {
-		log.Printf("[DEBUG] Index has %d fields in default mapping", len(impl.DefaultMapping.Fields))
 		for name, field := range impl.DefaultMapping.Fields {
-			log.Printf("[DEBUG]   Field: %s, Analyzer: %s", name, field.Analyzer)
 		}
 	} else {
-		log.Printf("[DEBUG] Could not get detailed field mapping")
 	}
 	
 	// Use Split Analyzer Strategy: query content field first (exact), then content_ngram (fuzzy)
@@ -1006,7 +988,6 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	exactQuery := bleve.NewMatchQuery(query)
 	exactQuery.FieldVal = "content"
 	
-	log.Printf("[DEBUG] Split Analyzer: trying exact match on content field, query=%q", query)
 
 	exactReq := bleve.NewSearchRequest(exactQuery)
 	exactReq.Size = k
@@ -1019,26 +1000,21 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	exactResult, exactErr := idx.bleveIdx.Search(exactReq)
 	
 	if exactErr != nil {
-		log.Printf("[DEBUG] Exact search error: %v", exactErr)
 	}
 	
 	// Log exact results count
 	if exactResult != nil {
-		log.Printf("[DEBUG] Exact search: found %d hits", len(exactResult.Hits))
 	}
 	
 	var searchResult *bleve.SearchResult
 	
 	if exactErr != nil {
-		log.Printf("[DEBUG] Exact search error: %v", exactErr)
 	}
 	
 	if exactErr == nil && len(exactResult.Hits) > 0 {
-		log.Printf("[DEBUG] Exact match found %d hits", len(exactResult.Hits))
 		searchResult = exactResult
 	} else {
 		// Fallback: try fuzzy match on content_ngram field
-		log.Printf("[DEBUG] No exact match, trying fuzzy on content_ngram field")
 		
 		fuzzyQuery := bleve.NewMatchQuery(query)
 		fuzzyQuery.FieldVal = "content_ngram"
@@ -1057,10 +1033,8 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 			log.Printf("[ERROR] Fuzzy search also failed: %v", exactErr)
 			return idx.searchKeywordFallback(query, k)
 		}
-		log.Printf("[DEBUG] Fuzzy search found %d hits", len(searchResult.Hits))
 	}
 	
-	log.Printf("[DEBUG] Search completed: %d hits found (BM25 scoring)", len(searchResult.Hits))
 
 	var results []SearchResult
 	
@@ -1110,7 +1084,6 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		// Use original sentence, try to bold the matched term
 		extract := chunk.Sentence
 	
-		log.Printf("[DEBUG] Bold check: query=%q, content=%q", queryLower, extract[:min(50, len(extract))])
 	
 		// Priority 1: Bold exact query term if found in content
 		extractLower := strings.ToLower(extract)
@@ -1118,16 +1091,13 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		if idx >= 0 {
 			actual := extract[idx:idx+len(query)]
 			extract = strings.Replace(extract, actual, "<b>"+actual+"</b>", 1)
-			log.Printf("[DEBUG] Bolded exact query: %s", query)
 		} else if hit.Fragments != nil {
-			log.Printf("[DEBUG] Fragments available: %+v", hit.Fragments)
 			// Check content_ngram field first (has n-gram matches), then content field
 			fragments, hasNgramFragments := hit.Fragments["content_ngram"]
 			if !hasNgramFragments || len(fragments) == 0 {
 				fragments, _ = hit.Fragments["content"]
 			}
 			if fragments != nil && len(fragments) > 0 {
-				log.Printf("[DEBUG] Using fragment: %s", fragments[0])
 				// Extract ALL matched terms from fragment (words between <mark> tags)
 				frag := fragments[0]
 				re := regexp.MustCompile(`<mark>([^<]+)</mark>`)
@@ -1147,19 +1117,16 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 						}
 					}
 					matchedTerm := bestMatch
-					log.Printf("[DEBUG] Best matched term from fragment: %s (score=%.2f)", matchedTerm, bestScore)
 					// Find and bold the actual term in the sentence
 					matchedLower := strings.ToLower(matchedTerm)
 					idx := strings.Index(extractLower, matchedLower)
 					if idx >= 0 {
 						actual := extract[idx:idx+len(matchedTerm)]
 						extract = strings.Replace(extract, actual, "<b>"+actual+"</b>", 1)
-						log.Printf("[DEBUG] Bolded matched term: %s", matchedTerm)
 					}
 				}
 			}
 		} else {
-			log.Printf("[DEBUG] No fragments in hit, trying fuzzy match on content")
 			// Try fuzzy: find n-gram matches in content
 			// Extract 2-3 character substrings from query and look for them
 			for n := 2; n <= 3 && n < len(query); n++ {
@@ -1168,7 +1135,6 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 					if idx := strings.Index(extractLower, ngram); idx >= 0 {
 						actual := extract[idx:idx+n]
 						extract = strings.Replace(extract, actual, "<b>"+actual+"</b>", 1)
-						log.Printf("[DEBUG] Bolded ngram: %s (from fuzzy match)", ngram)
 						break
 					}
 				}
@@ -1193,10 +1159,8 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	// Assign proper indices
 	for i := range results {
 		results[i].Index = i + 1
-		log.Printf("[DEBUG] Keyword result %d: chunkID=%s, extract=%q", i+1, results[i].ChunkID, results[i].Extract[:min(80, len(results[i].Extract))])
 	}
 
-	log.Printf("[DEBUG] Returning %d results (child chunks only)", len(results))
 	return results
 }
 
@@ -1264,7 +1228,6 @@ func (idx *Indexer) mergeResults(query string, semantic, keyword []SearchResult,
 	// Hybrid mode: use RRF to combine results
 	const k = 60 // RRF smoothing constant
 	
-	log.Printf("[DEBUG] Hybrid merge: semantic=%d, keyword=%d", len(semantic), len(keyword))
 	
 	// Build RRF scores map
 	rrfScores := make(map[string]float64)
@@ -1315,7 +1278,6 @@ func (idx *Indexer) mergeResults(query string, semantic, keyword []SearchResult,
 		} else if r.keyword {
 			sources = "keyword"
 		}
-		log.Printf("[DEBUG] RRF result: chunkID=%s, score=%.4f, sources=%s", r.chunkID, r.score, sources)
 	}
 	
 	// Build final results

@@ -32,7 +32,6 @@ type SimpleVectorStore struct {
 }
 
 func NewSimpleVectorStore() *SimpleVectorStore {
-	log.Println("[DEBUG] Creating new SimpleVectorStore")
 	return &SimpleVectorStore{
 		vectors: make([]vectorEntry, 0),
 	}
@@ -99,7 +98,6 @@ func (s *SimpleVectorStore) Search(query search.Vector, k int) []search.Result[s
 	})
 
 	// DEBUG: Log top 20 raw scores before filtering
-	log.Printf("[DEBUG] Top 20 raw scores before filtering:")
 	brainCount := 0
 	for i := 0; i < len(results) && i < 20; i++ {
 		// Try to find content for this ID
@@ -121,10 +119,8 @@ func (s *SimpleVectorStore) Search(query search.Vector, k int) []search.Result[s
 			}
 		}
 		if !strings.Contains(strings.ToLower(content), "brain") {
-			log.Printf("[DEBUG]   %d: id=%q score=%.4f content=%q", i+1, results[i].id, results[i].score, content)
 		}
 	}
-	log.Printf("[DEBUG] Total 'brain' in top 20: %d", brainCount)
 	
 	// Count ALL brain instances in index
 	totalBrainInIndex := 0
@@ -133,7 +129,6 @@ func (s *SimpleVectorStore) Search(query search.Vector, k int) []search.Result[s
 			totalBrainInIndex++
 		}
 	}
-	log.Printf("[DEBUG] Total 'brain' instances in index: %d", totalBrainInIndex)
 
 	// Apply threshold to filter out noise
 	// Key insight: In 1024D space, random vectors have expected similarity ~0.5
@@ -313,14 +308,12 @@ func (e *HTTPEmbedder) Search(query search.Vector, k int) []search.Result[string
 // SaveIndex saves the index to a file
 func (e *HTTPEmbedder) SaveIndex(path string) error {
 	// SimpleVectorStore doesn't support persistence yet - user re-indexes each time
-	log.Println("[DEBUG] SaveIndex not implemented for SimpleVectorStore - user will re-index")
 	return nil
 }
 
 // LoadIndex loads the index from a file
 func (e *HTTPEmbedder) LoadIndex(path string) error {
 	// SimpleVectorStore doesn't support persistence yet - user re-indexes each time
-	log.Println("[DEBUG] LoadIndex not implemented for SimpleVectorStore - user will re-index")
 	return nil
 }
 
