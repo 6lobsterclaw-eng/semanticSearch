@@ -65,13 +65,9 @@ func NewIndexer(embedder interface {
 
 // InitBleveIndex initializes a Bleve index with N-gram tokenization for fuzzy keyword search
 func (idx *Indexer) InitBleveIndex() error {
-	// Create index mapping with N-gram analyzer for fuzzy matching at index time
 	mapping := bleve.NewIndexMapping()
-
 	var err error
 	
-	// Add custom analyzer with ngram token filter for index-time n-gramming
-	// N-gram at index time: "cantilever" -> "ca", "can", "cant", "canti", "cantil", "cantile", "cantilev", "cantilever"
 	err = mapping.AddCustomAnalyzer("ngram_analyzer", map[string]interface{}{
 		"type":      "custom",
 		"tokenizer": "letter",
@@ -85,28 +81,21 @@ func (idx *Indexer) InitBleveIndex() error {
 		},
 	})
 	if err != nil {
-		log.Printf("[ERROR] Failed to add custom ngram analyzer: %v", err)
-		// Fall back to standard analyzer
+		log.Printf("[ERROR] AddCustomAnalyzer failed: %v", err)
 		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
-		log.Printf("[INFO] Bleve index initialized with standard analyzer (fallback)")
 		return nil
 	}
 
-	// Set as default analyzer - this should work for both indexing and querying
 	mapping.DefaultAnalyzer = "ngram_analyzer"
 	
-	log.Printf("[DEBUG] Created ngram_analyzer, creating index...")
-
-	// Create in-memory index with the custom mapping
 	idx.bleveIdx, err = bleve.NewMemOnly(mapping)
 	if err != nil {
-		log.Printf("[ERROR] Failed to create index with ngram: %v", err)
+		log.Printf("[ERROR] NewMemOnly failed: %v", err)
 		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
-		log.Printf("[INFO] Bleve index initialized with standard analyzer (fallback)")
 		return nil
 	}
 
-	log.Printf("[INFO] Bleve index initialized with N-gram analyzer (min=2, max=8)")
+	log.Printf("[INFO] Bleve index initialized with N-gram analyzer")
 	return nil
 }
 
@@ -881,10 +870,8 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	}
 
 	// Use simple MatchQuery - N-gram at index time handles fuzzy matching
-	log.Printf("[DEBUG] Executing Bleve search with N-gram index...")
 	matchQuery := bleve.NewMatchQuery(query)
 	matchQuery.FieldVal = "content"
-	log.Printf("[DEBUG] Query: term=%q, field=%q", query, matchQuery.FieldVal)
 
 	searchRequest := bleve.NewSearchRequest(matchQuery)
 	searchRequest.Size = k * 2
