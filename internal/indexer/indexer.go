@@ -1079,27 +1079,32 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	
 		log.Printf("[DEBUG] Using chunk: ID=%s, Sentence len=%d, Sentence=%q", chunk.ID, len(chunk.Sentence), chunk.Sentence[:min(100, len(chunk.Sentence))])
 	
-		// Filter false positives: require at least 30% of query n-grams to match
+		// Filter false positives: require at least 50% of query n-grams to match
 		// This allows fuzzy matches (contilever→cantilever) while filtering false positives
 		contentLower := strings.ToLower(chunk.Sentence)
 		
 		// Check if this is an exact match (query appears in content)
 		hasExactMatch := strings.Contains(contentLower, queryLower)
 		
-		// For false positive filtering: require 30% n-gram overlap OR exact match
+		// For false positive filtering: require 50% n-gram overlap OR exact match
 		queryNgrams := generateNgrams(query, 2, 4)
 		if len(queryNgrams) > 0 {
 			matchingNgrams := 0
+			matchedList := []string{}
 			for _, ng := range queryNgrams {
 				if strings.Contains(contentLower, ng) {
 					matchingNgrams++
+					matchedList = append(matchedList, ng)
 				}
 			}
 			matchRatio := float64(matchingNgrams) / float64(len(queryNgrams))
 			
-			// Accept if: exact match OR 30%+ n-gram overlap
-			if matchRatio < 0.30 && !hasExactMatch {
-				log.Printf("[DEBUG] Filtering out: %s matchRatio=%.2f < 0.30, no exact match", chunkID, matchRatio)
+			log.Printf("[DEBUG] N-gram filter: query=%q, content=%q", queryLower, contentLower[:min(50, len(contentLower))])
+			log.Printf("[DEBUG] N-gram filter: queryNgrams=%v, matched=%v, ratio=%.2f", queryNgrams, matchedList, matchRatio)
+			
+			// Accept if: exact match OR 50%+ n-gram overlap
+			if matchRatio < 0.50 && !hasExactMatch {
+				log.Printf("[DEBUG] Filtering out: %s matchRatio=%.2f < 0.50, no exact match", chunkID, matchRatio)
 				continue
 			}
 			log.Printf("[DEBUG] Accepting %s: exact=%v, matchRatio=%.2f", chunkID, hasExactMatch, matchRatio)
