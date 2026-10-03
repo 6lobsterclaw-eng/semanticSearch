@@ -148,7 +148,7 @@ func setupLlamaScreen() {
 	embedModelPath := "C:\\llama.cpp\\models\\qwen3-0.6b-q4_k_m.gguf"
 	embedPort := "8080"
 
-	form.AddTextView("Embedding Model:", "", 40, 1, true)
+	form.AddTextView("", "Embedding Model:", 40, 1, true)
 	form.AddInputField("Model Path:", embedModelPath, 60, nil, func(text string) {
 		embedModelPath = text
 	})
@@ -160,7 +160,7 @@ func setupLlamaScreen() {
 	llmModelPath := "C:\\llama.cpp\\models\\qwen3-8b-q4_k_m.gguf"
 	llmPort := "8081"
 
-	form.AddTextView("\nLLM Model (for questions):", "", 40, 1, true)
+	form.AddTextView("", "LLM Model (for questions):", 40, 1, true)
 	form.AddInputField("Model Path:", llmModelPath, 60, nil, func(text string) {
 		llmModelPath = text
 	})
