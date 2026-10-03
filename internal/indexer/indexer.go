@@ -16,6 +16,11 @@ import (
 	"github.com/gomarkdown/markdown"
 	"github.com/gomarkdown/markdown/parser"
 	"github.com/kelindar/search"
+
+	// Blank imports to register tokenizers, token filters, and analyzers
+	_ "github.com/blevesearch/bleve/v2/analysis/analyzer/custom"
+	_ "github.com/blevesearch/bleve/v2/analysis/token/ngram"
+	_ "github.com/blevesearch/bleve/v2/analysis/tokenizer/letter"
 )
 
 // Indexer orchestrates document indexing using an embedder
