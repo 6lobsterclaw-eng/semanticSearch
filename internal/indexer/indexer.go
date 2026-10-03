@@ -1016,10 +1016,22 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	exactReq.Highlight = bleve.NewHighlightWithStyle("html")
 	exactReq.Highlight.Fields = []string{"content", "content_ngram"}
 	
-	// Debug: log the query
+	// Debug: log the query and enable explanation
 	log.Printf("[DEBUG] Exact query: %+v", exactQuery)
 	
 	exactResult, exactErr := idx.bleveIdx.Search(exactReq)
+	
+	if exactErr != nil {
+		log.Printf("[DEBUG] Exact search error: %v", exactErr)
+	}
+	
+	// Log exact results with scores
+	if exactResult != nil {
+		log.Printf("[DEBUG] Exact search: found %d hits", len(exactResult.Hits))
+		for i, hit := range exactResult.Hits {
+			log.Printf("[DEBUG] Exact hit %d: ID=%s, Score=%.4f", i, hit.ID, hit.Score)
+		}
+	}
 	
 	var searchResult *bleve.SearchResult
 	
@@ -1052,6 +1064,9 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 			return idx.searchKeywordFallback(query, k)
 		}
 		log.Printf("[DEBUG] Fuzzy search found %d hits", len(searchResult.Hits))
+		for i, hit := range searchResult.Hits {
+			log.Printf("[DEBUG] Fuzzy hit %d: ID=%s, Score=%.4f", i, hit.ID, hit.Score)
+		}
 	}
 	
 	log.Printf("[DEBUG] Search completed: %d hits found (BM25 scoring)", len(searchResult.Hits))
