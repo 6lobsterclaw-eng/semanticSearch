@@ -958,18 +958,15 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		log.Printf("[DEBUG]   Hit %d: ID=%s, Score=%.4f", i+1, hit.ID, hit.Score)
 	}
 	
-	// Filter by minimum score threshold to reduce false positives
-	minScore := 0.1
-	var filteredHits search.DocumentMatchCollection
-	for _, hit := range searchResult.Hits {
-		if hit.Score >= minScore {
-			filteredHits = append(filteredHits, hit)
-		}
-	}
-	log.Printf("[DEBUG] After score filter (>=%.2f): %d hits", minScore, len(filteredHits))
-	
 	var results []SearchResult
-	for i, hit := range filteredHits {
+	
+	// Process hits with score filtering inline
+	hitIndex := 0
+	for _, hit := range searchResult.Hits {
+		// Skip low-scoring hits (false positives from loose n-gram matching)
+		if hit.Score < 0.1 {
+			continue
+		}
 		chunkID := hit.ID
 		
 		// Get chunk from our map
@@ -980,7 +977,7 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		
 		// Use highlighted text if available, otherwise fallback to boldKeyword
 		extract := chunk.Sentence
-		log.Printf("[DEBUG] Hit %d: ID=%s, Locations=%v, Fragments=%v", i+1, hit.ID, hit.Locations != nil, hit.Fragments)
+		log.Printf("[DEBUG] Hit %d: ID=%s, Locations=%v, Fragments=%v", hitIndex+1, hit.ID, hit.Locations != nil, hit.Fragments)
 		if hit.Fragments != nil {
 			// Use the highlighted fragments from Bleve
 			if fragments, ok := hit.Fragments["content"]; ok && len(fragments) > 0 {
@@ -1009,9 +1006,10 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 			Title:     chunk.Source,
 			Extract:   extract,
 			Location:  location,
-			Score:     float64(k) - float64(i), // Higher score for better matches
+			Score:     float64(k) - float64(hitIndex), // Higher score for better matches
 			IsKeyword: true,
 		})
+		hitIndex++
 	}
 	
 	// Assign proper indices
