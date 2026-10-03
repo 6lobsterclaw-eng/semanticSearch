@@ -1007,7 +1007,7 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	exactQuery.FieldVal = "content"
 	
 	log.Printf("[DEBUG] Split Analyzer: trying exact match on content field, query=%q", query)
-	
+
 	exactReq := bleve.NewSearchRequest(exactQuery)
 	exactReq.Size = k
 	exactReq.From = 0
@@ -1015,6 +1015,9 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	// Enable highlighting for exact match
 	exactReq.Highlight = bleve.NewHighlightWithStyle("html")
 	exactReq.Highlight.Fields = []string{"content", "content_ngram"}
+	
+	// Debug: log the query
+	log.Printf("[DEBUG] Exact query: %+v", exactQuery)
 	
 	exactResult, exactErr := idx.bleveIdx.Search(exactReq)
 	
