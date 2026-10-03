@@ -35,6 +35,8 @@ type Indexer struct {
 		Search(search.Vector, int) []search.Result[string]
 		SaveIndex(string) error
 		LoadIndex(string) error
+		Size() int
+		Dim() int
 	}
 	// Optional LLM for question generation
 	llmClient interface {
