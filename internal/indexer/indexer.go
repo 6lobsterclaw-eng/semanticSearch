@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/blevesearch/bleve/v2"
-	bleveMapping "github.com/blevesearch/bleve/v2/mapping"
 	"github.com/ledongthuc/pdf"
 	"github.com/gomarkdown/markdown"
 	"github.com/gomarkdown/markdown/parser"
