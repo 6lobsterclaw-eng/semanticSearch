@@ -338,6 +338,8 @@ func (idx *Indexer) indexFile(path string) (int, error) {
 			} else {
 				log.Printf("[WARN] Bleve index is nil, skipping indexing")
 			}
+		}
+	}
 
 	log.Printf("Indexing %s: total %d child chunks indexed", path, childCount)
 
