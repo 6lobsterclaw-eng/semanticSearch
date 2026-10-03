@@ -969,16 +969,6 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		return idx.searchKeywordFallback(query, k)
 	}
 	
-	// Debug: Check index stats
-	
-	// Debug: Check field mapping
-	impl, ok := idx.bleveIdx.Mapping().(*bleveMapping.IndexMappingImpl)
-	if ok {
-		for name, field := range impl.DefaultMapping.Fields {
-		}
-	} else {
-	}
-	
 	// Use Split Analyzer Strategy: query content field first (exact), then content_ngram (fuzzy)
 	// Try exact match first, if no results, try fuzzy
 	
@@ -1265,18 +1255,6 @@ func (idx *Indexer) mergeResults(query string, semantic, keyword []SearchResult,
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].score > results[j].score
 	})
-	
-	// Debug: log each result's sources
-	for _, r := range results {
-		sources := ""
-		if r.semantic && r.keyword {
-			sources = "hybrid"
-		} else if r.semantic {
-			sources = "semantic"
-		} else if r.keyword {
-			sources = "keyword"
-		}
-	}
 	
 	// Build final results
 	var out []SearchResult
