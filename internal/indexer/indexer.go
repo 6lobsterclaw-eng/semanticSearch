@@ -960,7 +960,7 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	
 	// Filter by minimum score threshold to reduce false positives
 	minScore := 0.1
-	var filteredHits []*bleve.SearchHit
+	var filteredHits search.DocumentMatchCollection
 	for _, hit := range searchResult.Hits {
 		if hit.Score >= minScore {
 			filteredHits = append(filteredHits, hit)
