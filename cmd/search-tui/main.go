@@ -289,28 +289,19 @@ func indexFolder(folderPath string) {
 	// Create indexer
 	idx := indexer.NewIndexer(emb)
 
-	// Scan files
-	files, err := scanFolder(folderPath)
+	// Index folder (handles scanning and indexing)
+	updateStatus(fmt.Sprintf("Indexing folder: %s", folderPath))
+	err = idx.IndexFolder(folderPath, func(done, total, chunks int) {
+		updateStatus(fmt.Sprintf("Progress: %d/%d files, %d chunks", done, total, chunks))
+	})
+
 	if err != nil {
-		updateStatus(fmt.Sprintf("Scan error: %v", err))
+		updateStatus(fmt.Sprintf("Index error: %v", err))
 		return
-	}
-
-	if len(files) == 0 {
-		updateStatus("No files found")
-		return
-	}
-
-	// Index files
-	for i, file := range files {
-		updateStatus(fmt.Sprintf("Indexing %d/%d: %s", i+1, len(files), filepath.Base(file)))
-		if err := idx.AddFile(file); err != nil {
-			log.Printf("Error indexing %s: %v", file, err)
-		}
 	}
 
 	indexerObj = idx
-	updateStatus(fmt.Sprintf("Indexed %d files, %d chunks", idx.DocCount(), idx.ChunkCount()))
+	updateStatus(fmt.Sprintf("Indexed %d files", idx.FileCount()))
 }
 
 // ============ SEARCH SCREEN ============
@@ -556,13 +547,14 @@ func importIndex(path string) {
 	// Create new indexer
 	idx := indexer.NewIndexer(emb)
 
-	if err := idx.Import(path); err != nil {
+	// Load index
+	if err := idx.LoadIndex(path); err != nil {
 		updateStatus(fmt.Sprintf("Import error: %v", err))
 		return
 	}
 
 	indexerObj = idx
-	updateStatus(fmt.Sprintf("Imported! Files: %d, Chunks: %d", idx.DocCount(), idx.ChunkCount()))
+	updateStatus(fmt.Sprintf("Imported! Files: %d", idx.FileCount()))
 }
 
 // ============ UTILITIES ============
