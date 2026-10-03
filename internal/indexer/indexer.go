@@ -2,6 +2,7 @@ package indexer
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -631,9 +632,121 @@ func (idx *Indexer) LoadIndex(path string) error {
 	return idx.index.ReadFile(path)
 }
 
-// DocumentCount returns the number of indexed documents
-func (idx *Indexer) DocumentCount() int {
+// ChunkCount returns the number of indexed chunks
+func (idx *Indexer) ChunkCount() int {
 	return idx.docCount
+}
+
+// Export exports the entire index (vector + bleve + metadata) to a directory
+func (idx *Indexer) Export(dirPath string) error {
+	// Create export directory
+	if err := os.MkdirAll(dirPath, 0755); err != nil {
+		return fmt.Errorf("failed to create export dir: %w", err)
+	}
+
+	// 1. Export vector index
+	vectorPath := filepath.Join(dirPath, "vectors.bin")
+	if err := idx.index.WriteFile(vectorPath); err != nil {
+		return fmt.Errorf("failed to export vectors: %w", err)
+	}
+
+	// 2. Export Bleve index
+	if idx.bleveIdx != nil {
+		blevePath := filepath.Join(dirPath, "bleve")
+		if err := idx.bleveIdx.Close(); err != nil {
+			return fmt.Errorf("failed to close bleve: %w", err)
+		}
+		// Move temp bleve index to export location
+		tempBlevePath := filepath.Join(os.TempDir(), "bleve_ngram_index")
+		if _, err := os.Stat(tempBlevePath); err == nil {
+			if err := os.Rename(tempBlevePath, blevePath); err != nil {
+				return fmt.Errorf("failed to move bleve index: %w", err)
+			}
+		}
+		// Re-create bleve index for continued use
+		if err := idx.InitBleveIndex(); err != nil {
+			return fmt.Errorf("failed to reinit bleve: %w", err)
+		}
+	}
+
+	// 3. Export metadata (chunkMap, parentMap, docCount, fileCount, source paths)
+	metaPath := filepath.Join(dirPath, "metadata.json")
+	meta := struct {
+		DocCount   int              `json:"docCount"`
+		FileCount  int              `json:"fileCount"`
+		ChunkMap   map[string]Chunk `json:"chunkMap"`
+		ParentMap  map[string]Chunk `json:"parentMap"`
+		StoredChunks []Chunk         `json:"storedChunks"`
+	}{
+		DocCount:    idx.docCount,
+		FileCount:   idx.fileCount,
+		ChunkMap:    idx.chunkMap,
+		ParentMap:   idx.parentMap,
+		StoredChunks: idx.storedChunks,
+	}
+	data, err := json.Marshal(meta)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metadata: %w", err)
+	}
+	if err := os.WriteFile(metaPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write metadata: %w", err)
+	}
+
+	return nil
+}
+
+// Import imports the entire index from a directory
+func (idx *Indexer) Import(dirPath string) error {
+	// 1. Import vector index
+	vectorPath := filepath.Join(dirPath, "vectors.bin")
+	if err := idx.index.ReadFile(vectorPath); err != nil {
+		return fmt.Errorf("failed to import vectors: %w", err)
+	}
+
+	// 2. Import Bleve index
+	blevePath := filepath.Join(dirPath, "bleve")
+	if _, err := os.Stat(blevePath); err == nil {
+		// Close existing bleve if any
+		if idx.bleveIdx != nil {
+			idx.bleveIdx.Close()
+		}
+		// Remove temp bleve path
+		tempBlevePath := filepath.Join(os.TempDir(), "bleve_ngram_index")
+		os.RemoveAll(tempBlevePath)
+		// Move imported bleve to temp location
+		if err := os.Rename(blevePath, tempBlevePath); err != nil {
+			return fmt.Errorf("failed to move bleve index: %w", err)
+		}
+		// Open the bleve index
+		idx.bleveIdx, err = bleve.Open(tempBlevePath)
+		if err != nil {
+			return fmt.Errorf("failed to open bleve index: %w", err)
+		}
+	}
+
+	// 3. Import metadata
+	metaPath := filepath.Join(dirPath, "metadata.json")
+	data, err := os.ReadFile(metaPath)
+	if err != nil {
+		return fmt.Errorf("failed to read metadata: %w", err)
+	}
+	meta := struct {
+		DocCount     int              `json:"docCount"`
+		FileCount    int              `json:"fileCount"`
+		ChunkMap     map[string]Chunk `json:"chunkMap"`
+		ParentMap    map[string]Chunk `json:"parentMap"`
+		StoredChunks []Chunk          `json:"storedChunks"`
+	}{}
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return fmt.Errorf("failed to unmarshal metadata: %w", err)
+	}
+	idx.docCount = meta.DocCount
+	idx.fileCount = meta.FileCount
+	idx.chunkMap = meta.ChunkMap
+	idx.parentMap = meta.ParentMap
+	idx.storedChunks = meta.StoredChunks
+
+	return nil
 }
 
 // FileCount returns the number of indexed files

@@ -858,7 +858,7 @@ func main() {
 			fmt.Fprintf(w, `{"count": 0, "files": 0}`)
 			return
 		}
-		fmt.Fprintf(w, `{"count": %d, "files": %d}`, idx.DocumentCount(), idx.FileCount())
+		fmt.Fprintf(w, `{"count": %d, "files": %d}`, idx.ChunkCount(), idx.FileCount())
 	})
 
 	// Index folder endpoint
