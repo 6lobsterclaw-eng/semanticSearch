@@ -152,29 +152,20 @@ func setupLlamaScreen() {
 	llmModelPath := "C:\\llama.cpp\\models\\qwen3-8b-q4_k_m.gguf"
 	llmPort := "8081"
 
-	// Embedding model section
-	embedLabel := tview.NewTextView().
-		SetText("Embedding Model:").
-		SetTextColor(tcell.ColorBlack)
-	flex.AddItem(embedLabel, 1, 0, false)
-
-	form.AddInputField("Embedding Model Path:", embedModelPath, 60, nil, func(text string) {
+	// Section headers using AddTextView with correct signature
+	form.AddTextView("Embed Model:", "=== EMBEDDING MODEL (for vector search) ===", 60, 1, true)
+	form.AddInputField("Model Path:", embedModelPath, 60, nil, func(text string) {
 		embedModelPath = text
 	})
-	form.AddInputField("Embedding Port:", embedPort, 10, nil, func(text string) {
+	form.AddInputField("Port:", embedPort, 10, nil, func(text string) {
 		embedPort = text
 	})
 
-	// LLM model section
-	llmLabel := tview.NewTextView().
-		SetText("LLM Model (for questions):").
-		SetTextColor(tcell.ColorBlack)
-	flex.AddItem(llmLabel, 1, 0, false)
-
-	form.AddInputField("LLM Model Path:", llmModelPath, 60, nil, func(text string) {
+	form.AddTextView("LLM Model:", "=== LLM MODEL (for question generation) ===", 60, 1, true)
+	form.AddInputField("Model Path:", llmModelPath, 60, nil, func(text string) {
 		llmModelPath = text
 	})
-	form.AddInputField("LLM Port:", llmPort, 10, nil, func(text string) {
+	form.AddInputField("Port:", llmPort, 10, nil, func(text string) {
 		llmPort = text
 	})
 
