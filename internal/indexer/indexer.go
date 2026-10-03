@@ -862,10 +862,15 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	matchQuery := bleve.NewMatchQuery(query)
 	matchQuery.Fuzziness = 1  // Allow 1 edit distance for typo handling
 	matchQuery.Prefix = 2  // Require at least 2 matching prefix chars
+	matchQuery.FieldVal = "content"  // Explicitly search in content field
+	log.Printf("[DEBUG] Fuzzy query: term=%q, fuzziness=%d, prefix=%d, field=%q", 
+		query, matchQuery.Fuzziness, matchQuery.Prefix, matchQuery.FieldVal)
 
 	searchRequest := bleve.NewSearchRequest(matchQuery)
 	searchRequest.Size = k * 2
 	searchRequest.From = 0
+
+	log.Printf("[DEBUG] About to execute search...")
 
 	searchResult, err := idx.bleveIdx.Search(searchRequest)
 	if err != nil {
