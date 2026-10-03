@@ -20,6 +20,7 @@ import (
 	// Blank imports to register tokenizers, token filters, and analyzers
 	_ "github.com/blevesearch/bleve/v2/analysis/analyzer/custom"
 	_ "github.com/blevesearch/bleve/v2/analysis/token/ngram"
+	_ "github.com/blevesearch/bleve/v2/analysis/token/edgengram"
 	_ "github.com/blevesearch/bleve/v2/analysis/tokenizer/letter"
 )
 
@@ -62,28 +63,30 @@ func NewIndexer(embedder interface {
 	}
 }
 
-// InitBleveIndex initializes a Bleve index with N-gram tokenization for fuzzy keyword search
+// InitBleveIndex initializes a Bleve index with Edge N-gram for fuzzy keyword search
 func (idx *Indexer) InitBleveIndex() error {
-	// Create index mapping with N-gram analyzer for fuzzy matching at index time
+	// Create index mapping with Edge N-gram analyzer for prefix/fuzzy matching
 	mapping := bleve.NewIndexMapping()
 
-	// Add custom analyzer with ngram token filter
-	// Using "standard" analyzer base with ngram filter applied
+	// Add custom analyzer with edge_ngram token filter
+	// Edge n-gram creates n-grams from the start of the token (e.g., "hello" -> "he", "hel", "hell", "hello")
+	// This is ideal for prefix matching and handling typos
 	err := mapping.AddCustomAnalyzer("ngram_analyzer", map[string]interface{}{
 		"type":      "custom",
 		"tokenizer": "letter",
 		"token_filters": []interface{}{
 			"lowercase",
 			map[string]interface{}{
-				"type": "ngram",
+				"type": "edge_ngram",
 				"min":  float64(2),
-				"max":  float64(4),
+				"max":  float64(10),
+				"back": false, // front-side n-grams
 			},
 		},
 	})
 	if err != nil {
 		log.Printf("[WARN] Failed to add custom ngram analyzer: %v", err)
-		// Fall back to creating index without custom mapping - use simple in-memory
+		// Fall back to creating index without custom mapping
 		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
 		log.Printf("[INFO] Bleve index initialized with default analyzer")
 		return nil
@@ -101,7 +104,7 @@ func (idx *Indexer) InitBleveIndex() error {
 		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
 	}
 
-	log.Printf("[INFO] Bleve index initialized with N-gram tokenizer (min=2, max=4)")
+	log.Printf("[INFO] Bleve index initialized with Edge N-gram analyzer (min=2, max=10)")
 	return nil
 }
 
