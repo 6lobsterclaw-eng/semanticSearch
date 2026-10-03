@@ -1205,6 +1205,8 @@ func (idx *Indexer) mergeResults(query string, semantic, keyword []SearchResult,
 	// Hybrid mode: use RRF to combine results
 	const k = 60 // RRF smoothing constant
 	
+	log.Printf("[DEBUG] Hybrid merge: semantic=%d, keyword=%d", len(semantic), len(keyword))
+	
 	// Build RRF scores map
 	rrfScores := make(map[string]float64)
 	seen := make(map[string]int) // Track which sources contributed (for IsKeyword flag)
@@ -1243,6 +1245,19 @@ func (idx *Indexer) mergeResults(query string, semantic, keyword []SearchResult,
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].score > results[j].score
 	})
+	
+	// Debug: log each result's sources
+	for _, r := range results {
+		sources := ""
+		if r.semantic && r.keyword {
+			sources = "hybrid"
+		} else if r.semantic {
+			sources = "semantic"
+		} else if r.keyword {
+			sources = "keyword"
+		}
+		log.Printf("[DEBUG] RRF result: chunkID=%s, score=%.4f, sources=%s", r.chunkID, r.score, sources)
+	}
 	
 	// Build final results
 	var out []SearchResult
