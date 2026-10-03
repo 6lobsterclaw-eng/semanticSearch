@@ -961,13 +961,17 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	exactReq.Size = k
 	exactReq.From = 0
 	
+	// Enable highlighting for exact match
+	exactReq.Highlight = bleve.NewHighlightWithStyle("html")
+	exactReq.Highlight.Fields = []string{"content", "content_ngram"}
+	
 	exactResult, exactErr := idx.bleveIdx.Search(exactReq)
 	
-	var finalResult *bleve.SearchResult
+	var searchResult *bleve.SearchResult
 	
 	if exactErr == nil && len(exactResult.Hits) > 0 {
 		log.Printf("[DEBUG] Exact match found %d hits", len(exactResult.Hits))
-		finalResult = exactResult
+		searchResult = exactResult
 	} else {
 		// Fallback: try fuzzy match on content_ngram field
 		log.Printf("[DEBUG] No exact match, trying fuzzy on content_ngram field")
@@ -980,18 +984,16 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		fuzzyReq.Size = k
 		fuzzyReq.From = 0
 		
-		finalResult, exactErr = idx.bleveIdx.Search(fuzzyReq)
+		// Enable highlighting for fuzzy match
+		fuzzyReq.Highlight = bleve.NewHighlightWithStyle("html")
+		fuzzyReq.Highlight.Fields = []string{"content", "content_ngram"}
+		
+		searchResult, exactErr = idx.bleveIdx.Search(fuzzyReq)
 		if exactErr != nil {
 			log.Printf("[ERROR] Fuzzy search also failed: %v", exactErr)
 			return idx.searchKeywordFallback(query, k)
 		}
 	}
-	
-	searchResult := finalResult
-	
-	// Enable highlighting
-	searchResult.Request.Highlight = bleve.NewHighlightWithStyle("html")
-	searchResult.Request.Highlight.Fields = []string{"content", "content_ngram"}
 	
 	log.Printf("[DEBUG] Search completed: %d hits found (BM25 scoring)", len(searchResult.Hits))
 	for i, hit := range searchResult.Hits {
