@@ -716,7 +716,7 @@ func main() {
 
 		// Start server in background
 		go func() {
-			serverCmd = exec.Command(serverPath, "-m", modelPath, "--port", fmt.Sprintf("%d", port), "-c", "2048", "--embeddings")
+			serverCmd = exec.Command(serverPath, "-m", modelPath, "--port", fmt.Sprintf("%d", port), "-c", "2048", "--embeddings", "-ngl", "999")
 			serverCmd.Stdout = log.Writer()
 			serverCmd.Stderr = log.Writer()
 
@@ -802,7 +802,7 @@ func main() {
 				llmServerCmd.Process.Kill()
 			}
 
-			llmServerCmd = exec.Command(serverPath, "-m", modelPath, "--port", fmt.Sprintf("%d", port), "-c", "4096")
+			llmServerCmd = exec.Command(serverPath, "-m", modelPath, "--port", fmt.Sprintf("%d", port), "-c", "4096", "-ngl", "999")
 			llmServerCmd.Stdout = log.Writer()
 			llmServerCmd.Stderr = log.Writer()
 
