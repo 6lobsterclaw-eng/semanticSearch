@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/blevesearch/bleve/v2"
-	bleveMapping "github.com/blevesearch/bleve/v2/mapping"
 	"github.com/ledongthuc/pdf"
 	"github.com/gomarkdown/markdown"
 	"github.com/gomarkdown/markdown/parser"
@@ -65,6 +64,7 @@ func NewIndexer(embedder interface {
 }
 
 // InitBleveIndex initializes a Bleve index with N-gram tokenization for fuzzy keyword search
+// Following official Bleve docs: https://github.com/blevesearch/bleve/blob/master/docs/search_autocomplete.md
 func (idx *Indexer) InitBleveIndex() error {
 	// Use temp directory for disk-based index
 	indexPath := filepath.Join(os.TempDir(), "bleve_ngram_index")
@@ -72,11 +72,10 @@ func (idx *Indexer) InitBleveIndex() error {
 	// Remove existing index if any
 	os.RemoveAll(indexPath)
 	
-	// Use concrete type to access DefaultAnalyzer
-	mapping := bleve.NewIndexMapping().(*bleveMapping.IndexMappingImpl)
-	var err error
+	// Create new index mapping
+	indexMapping := bleve.NewIndexMapping()
 	
-	// First: Register custom edge n-gram token filter
+	// Step 1: Register custom edge n-gram token filter
 	edgeNgramFilter := map[string]interface{}{
 		"type": "edge_ngram",
 		"min":  float64(2),
@@ -84,43 +83,45 @@ func (idx *Indexer) InitBleveIndex() error {
 		"back": false, // front edge n-gram
 	}
 	
-	err = mapping.AddCustomTokenFilter("edge_ngram_filter", edgeNgramFilter)
+	err := indexMapping.AddCustomTokenFilter("edge_ngram_filter", edgeNgramFilter)
 	if err != nil {
 		log.Printf("[ERROR] AddCustomTokenFilter failed: %v", err)
 		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
 		return nil
 	}
-	log.Printf("[DEBUG] Registered custom token filter: edge_ngram_filter")
+	log.Printf("[DEBUG] Step 1: Registered custom token filter: edge_ngram_filter")
 	
-	// Second: Create custom analyzer using the registered filter
-	err = mapping.AddCustomAnalyzer("ngram_analyzer", map[string]interface{}{
+	// Step 2: Create custom analyzer using the registered filter
+	customAnalyzer := map[string]interface{}{
 		"type":      "custom",
-		"tokenizer": "letter",
+		"tokenizer": "unicode",
 		"token_filters": []interface{}{
 			"edge_ngram_filter",
 			"lowercase",
 		},
-	})
+	}
+	
+	err = indexMapping.AddCustomAnalyzer("ngram_analyzer", customAnalyzer)
 	if err != nil {
 		log.Printf("[ERROR] AddCustomAnalyzer failed: %v", err)
 		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
 		return nil
 	}
-	log.Printf("[DEBUG] Registered custom analyzer: ngram_analyzer")
+	log.Printf("[DEBUG] Step 2: Registered custom analyzer: ngram_analyzer")
 
-	// Set analyzer on the field mapping, not just default
+	// Step 3: Configure Field Mapping - assign analyzer to specific field
 	fieldMapping := bleve.NewTextFieldMapping()
 	fieldMapping.Analyzer = "ngram_analyzer"
-	mapping.DefaultMapping.AddFieldMappingsAt("content", fieldMapping)
+	indexMapping.DefaultMapping.AddFieldMappingsAt("content", fieldMapping)
 	
-	log.Printf("[DEBUG] Created field mapping for 'content' with ngram_analyzer")
+	log.Printf("[DEBUG] Step 3: Created field mapping for 'content' with ngram_analyzer")
 	
 	log.Printf("[DEBUG] Creating disk index with ngram analyzer...")
 	
-	// Use disk-based index
-	idx.bleveIdx, err = bleve.New(indexPath, mapping)
+	// Create the index on disk
+	idx.bleveIdx, err = bleve.New(indexPath, indexMapping)
 	if err != nil {
-		log.Printf("[ERROR] New (disk) failed: %v", err)
+		log.Printf("[ERROR] bleve.New failed: %v", err)
 		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
 		return nil
 	}
@@ -128,7 +129,7 @@ func (idx *Indexer) InitBleveIndex() error {
 	log.Printf("[INFO] Bleve index initialized with N-gram analyzer (disk-based)")
 	
 	if idx.bleveIdx != nil {
-		log.Printf("[DEBUG] Bleve index is initialized (disk)")
+		log.Printf("[DEBUG] Bleve index created successfully")
 	} else {
 		log.Printf("[ERROR] Bleve index is NIL!")
 	}
