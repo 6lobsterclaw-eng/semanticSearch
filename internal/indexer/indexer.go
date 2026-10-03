@@ -877,13 +877,12 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		return idx.searchKeywordFallback(query, k)
 	}
 
-	// Use MatchQuery with n-gram analyzer for both index and query
+	// Use MatchQuery - rely on index's default analyzer
 	matchQuery := bleve.NewMatchQuery(query)
 	matchQuery.FieldVal = "content"
-	matchQuery.Analyzer = "ngram_analyzer"
+	// Don't set Analyzer - use the index's default (which is ngram_analyzer)
 
-	log.Printf("[DEBUG] searchKeyword: query=%q, field=%q, analyzer=%q", 
-		query, matchQuery.FieldVal, matchQuery.Analyzer)
+	log.Printf("[DEBUG] searchKeyword: query=%q, field=%q", query, matchQuery.FieldVal)
 
 	searchRequest := bleve.NewSearchRequest(matchQuery)
 	searchRequest.Size = k * 2
