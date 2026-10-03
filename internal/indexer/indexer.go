@@ -80,8 +80,8 @@ func (idx *Indexer) InitBleveIndex() error {
 	// This creates n-grams from tokens AFTER tokenization
 	ngramFilter := map[string]interface{}{
 		"type": "ngram",
-		"min":  float64(3),
-		"max":  float64(10),
+		"min":  float64(2),
+		"max":  float64(4),
 	}
 	
 	err := indexMapping.AddCustomTokenFilter("ngram_filter", ngramFilter)
