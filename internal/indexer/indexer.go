@@ -860,8 +860,8 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	// Use MatchQuery with fuzzy matching at query time
 	log.Printf("[DEBUG] Executing Bleve search with MatchQuery (fuzzy)...")
 	matchQuery := bleve.NewMatchQuery(query)
-	matchQuery.Fuzziness = 2  // Allow 2 edit distances for typo handling
-	matchQuery.Prefix = 1  // Require at least 1 matching prefix char
+	matchQuery.Fuzziness = 1  // Allow 1 edit distance for typo handling
+	matchQuery.Prefix = 0  // No prefix requirement
 	matchQuery.FieldVal = "content"  // Explicitly search in content field
 	log.Printf("[DEBUG] Fuzzy query: term=%q, fuzziness=%d, prefix=%d, field=%q", 
 		query, matchQuery.Fuzziness, matchQuery.Prefix, matchQuery.FieldVal)
