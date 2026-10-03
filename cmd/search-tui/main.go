@@ -158,10 +158,10 @@ func setupLlamaScreen() {
 		SetTextColor(tcell.ColorBlack)
 	flex.AddItem(embedLabel, 1, 0, false)
 
-	form.AddInputField("Model Path:", embedModelPath, 60, nil, func(text string) {
+	form.AddInputField("Embedding Model Path:", embedModelPath, 60, nil, func(text string) {
 		embedModelPath = text
 	})
-	form.AddInputField("Port:", embedPort, 10, nil, func(text string) {
+	form.AddInputField("Embedding Port:", embedPort, 10, nil, func(text string) {
 		embedPort = text
 	})
 
@@ -171,10 +171,10 @@ func setupLlamaScreen() {
 		SetTextColor(tcell.ColorBlack)
 	flex.AddItem(llmLabel, 1, 0, false)
 
-	form.AddInputField("Model Path:", llmModelPath, 60, nil, func(text string) {
+	form.AddInputField("LLM Model Path:", llmModelPath, 60, nil, func(text string) {
 		llmModelPath = text
 	})
-	form.AddInputField("Port:", llmPort, 10, nil, func(text string) {
+	form.AddInputField("LLM Port:", llmPort, 10, nil, func(text string) {
 		llmPort = text
 	})
 
