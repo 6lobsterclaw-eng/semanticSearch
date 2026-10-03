@@ -961,12 +961,7 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	
 	// Process hits - skip parent chunks, use BM25 scores directly
 	hitIndex := 0
-	queryNgrams := generateNgrams(query, 3, 10)
-	queryNgramSet := make(map[string]bool)
-	for _, ng := range queryNgrams {
-		queryNgramSet[ng] = true
-	}
-	log.Printf("[DEBUG] Query %q generated %d n-grams: %v", query, len(queryNgrams), queryNgrams)
+	queryLower := strings.ToLower(query)
 	
 	for _, hit := range searchResult.Hits {
 		chunkID := hit.ID
@@ -982,25 +977,14 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 			continue
 		}
 		
-		// Filter false positives: require at least 30% of query n-grams to match
+		// Filter false positives: only keep if query appears in content (exact match)
 		contentLower := strings.ToLower(chunk.Sentence)
-		matchingNgrams := 0
-		matchedNgrams := []string{}
-		for ng := range queryNgramSet {
-			if strings.Contains(contentLower, ng) {
-				matchingNgrams++
-				matchedNgrams = append(matchedNgrams, ng)
-			}
-		}
-		matchRatio := float64(matchingNgrams) / float64(len(queryNgrams))
-		log.Printf("[DEBUG] Hit %s: content=%q, matched ngrams=%v (%.2f)", 
-			chunkID, contentLower[:min(100, len(contentLower))], matchedNgrams, matchRatio)
-		if matchRatio < 0.30 {
-			log.Printf("[DEBUG] Filtering out false positive: %s matchRatio=%.2f < 0.30", chunkID, matchRatio)
+		if !strings.Contains(contentLower, queryLower) {
+			log.Printf("[DEBUG] Filtering out: %s doesn't contain %q", chunkID, query)
 			continue
 		}
 		
-		log.Printf("[DEBUG] Using BM25 score for %s: %.4f (matchRatio=%.2f)", chunkID, hit.Score, matchRatio)
+		log.Printf("[DEBUG] Using BM25 score for %s: %.4f", chunkID, hit.Score)
 		
 		// Use original sentence, try to bold the matched term
 		extract := chunk.Sentence
