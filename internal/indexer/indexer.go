@@ -1168,6 +1168,11 @@ func (idx *Indexer) searchKeywordFallback(query string, k int) []SearchResult {
 	var results []SearchResult
 	
 	for chunkID, chunk := range idx.chunkMap {
+		// Skip parent chunks - only return child chunks
+		if !strings.Contains(chunkID, "#child#") {
+			continue
+		}
+		
 		contentLower := strings.ToLower(chunk.Sentence)
 		if strings.Contains(contentLower, queryLower) {
 			extract := boldKeyword(chunk.Sentence, query)
