@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/blevesearch/bleve/v2"
+	"github.com/blevesearch/bleve/v2/mapping"
 	"github.com/ledongthuc/pdf"
 	"github.com/gomarkdown/markdown"
 	"github.com/gomarkdown/markdown/parser"
@@ -71,7 +72,8 @@ func (idx *Indexer) InitBleveIndex() error {
 	// Remove existing index if any
 	os.RemoveAll(indexPath)
 	
-	mapping := bleve.NewIndexMapping()
+	// Use concrete type to access DefaultAnalyzer
+	mapping := bleve.NewIndexMapping().(*mapping.IndexMappingImpl)
 	var err error
 	
 	// First: Register custom edge n-gram token filter
@@ -95,7 +97,7 @@ func (idx *Indexer) InitBleveIndex() error {
 		"type":      "custom",
 		"tokenizer": "letter",
 		"token_filters": []interface{}{
-			"edge_ngram_filter",  // Use the custom filter we just registered
+			"edge_ngram_filter",
 			"lowercase",
 		},
 	})
@@ -106,7 +108,7 @@ func (idx *Indexer) InitBleveIndex() error {
 	}
 	log.Printf("[DEBUG] Registered custom analyzer: ngram_analyzer")
 
-	// Set as default for ALL fields
+	// Set as default for ALL fields - use the field directly
 	mapping.DefaultAnalyzer = "ngram_analyzer"
 	
 	log.Printf("[DEBUG] Creating disk index with ngram analyzer...")
@@ -121,12 +123,8 @@ func (idx *Indexer) InitBleveIndex() error {
 
 	log.Printf("[INFO] Bleve index initialized with N-gram analyzer (disk-based)")
 	
-	// Debug: Verify mapping
 	if idx.bleveIdx != nil {
 		log.Printf("[DEBUG] Bleve index is initialized (disk)")
-		if mapping := idx.bleveIdx.Mapping(); mapping != nil {
-			log.Printf("[DEBUG] Init: Default analyzer = %q", mapping.DefaultAnalyzer)
-		}
 	} else {
 		log.Printf("[ERROR] Bleve index is NIL!")
 	}
