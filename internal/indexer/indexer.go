@@ -76,12 +76,11 @@ func (idx *Indexer) InitBleveIndex() error {
 	// Create new index mapping
 	indexMapping := bleve.NewIndexMapping()
 	
-	// Step 1: Register custom n-gram token filter (regular n-gram, not edge)
-	// Regular n-gram creates substrings from ALL positions - handles compound words & typos
-	// Keep min=2 for better typo tolerance
+	// Step 1: Register custom n-gram token filter (regular n-gram)
+	// Using min=3 to reduce false positives from short n-grams
 	ngramFilter := map[string]interface{}{
 		"type": "ngram",
-		"min":  float64(2),
+		"min":  float64(3),
 		"max":  float64(10),
 	}
 	
@@ -91,7 +90,7 @@ func (idx *Indexer) InitBleveIndex() error {
 		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
 		return nil
 	}
-	log.Printf("[DEBUG] Step 1: Registered custom token filter: ngram_filter (regular n-gram)")
+	log.Printf("[DEBUG] Step 1: Registered custom token filter: ngram_filter (min=3)")
 	
 	// Step 2: Create custom analyzer using the registered filter
 	customAnalyzer := map[string]interface{}{
@@ -958,32 +957,14 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		log.Printf("[DEBUG]   Hit %d: ID=%s, Score=%.4f", i+1, hit.ID, hit.Score)
 	}
 	
-	// Find max score for relative filtering
-	maxScore := 0.0
-	for _, hit := range searchResult.Hits {
-		if hit.Score > maxScore {
-			maxScore = hit.Score
-		}
-	}
-	
+	// Score filtering disabled for testing
 	// Relative score threshold: keep only hits with score > 30% of max score
-	// This filters weak matches while keeping strong ones
-	scoreRatioThreshold := 0.3
-	minScore := maxScore * scoreRatioThreshold
-	if minScore < 0.01 {
-		minScore = 0.01 // Absolute minimum
-	}
-	log.Printf("[DEBUG] Max score: %.4f, Relative threshold (30%%): %.4f", maxScore, minScore)
 	
 	var results []SearchResult
 	
-	// Process hits with relative score filtering
+	// Process all hits without filtering
 	hitIndex := 0
 	for _, hit := range searchResult.Hits {
-		// Skip low-scoring hits (false positives from loose n-gram matching)
-		if hit.Score < minScore {
-			continue
-		}
 		chunkID := hit.ID
 		
 		// Get chunk from our map
