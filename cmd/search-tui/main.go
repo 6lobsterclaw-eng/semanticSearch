@@ -144,7 +144,8 @@ func setupLlamaScreen() {
 	// Section headers as TextView
 	embedHeader := tview.NewTextView().
 		SetText("=== EMBEDDING MODEL (for vector search) ===").
-		SetTextColor(tcell.ColorBlue | tcell.AttrBold)
+		SetTextColor(tcell.ColorBlue).
+		SetTextAttributes(tcell.AttrBold)
 	flex.AddItem(embedHeader, 1, 0, false)
 
 	// Model path inputs
@@ -168,7 +169,8 @@ func setupLlamaScreen() {
 	// LLM section header
 	llmHeader := tview.NewTextView().
 		SetText("=== LLM MODEL (for question generation) ===").
-		SetTextColor(tcell.ColorBlue | tcell.AttrBold)
+		SetTextColor(tcell.ColorBlue).
+		SetTextAttributes(tcell.AttrBold)
 	flex.AddItem(llmHeader, 1, 0, false)
 
 	form.AddInputField("LLM Model Path:", llmModelPath, 60, nil, func(text string) {
