@@ -710,6 +710,7 @@ func (idx *Indexer) searchSemanticWeighted(query string, k int) []SearchResult {
 	}
 
 	log.Printf("[DEBUG Indexer.searchSemanticWeighted] Query vec dim=%d", len(vec))
+	log.Printf("[DEBUG Indexer.searchSemanticWeighted] Vector store size: %d", idx.embedder.Size())
 	results := idx.embedder.Search(vec, k*3) // Get more results for re-ranking
 
 	log.Printf("[DEBUG Indexer.searchSemanticWeighted] Got %d raw results", len(results))
