@@ -560,18 +560,24 @@ func splitIntoChildChunks(parentText string) []string {
 		return nil
 	}
 
+	log.Printf("[DEBUG splitIntoChildChunks] Input: len=%d", len(parentText))
+	
 	// Use the existing sentence splitting logic
 	sentences := splitIntoSentences(parentText)
+	log.Printf("[DEBUG splitIntoChildChunks] Found %d sentences", len(sentences))
 
 	// Merge sentences into chunks of ~200 chars (~1-2 sentences, ~40 tokens)
 	var chunks []string
 	var current strings.Builder
-
+	
+	chunkIdx := 0
 	for _, sentence := range sentences {
 		if current.Len()+len(sentence)+1 > 200 {
 			// Current chunk is full, save it
 			if current.Len() > 0 {
 				chunks = append(chunks, current.String())
+				log.Printf("[DEBUG splitIntoChildChunks] Chunk %d: len=%d", chunkIdx, current.Len())
+				chunkIdx++
 				current.Reset()
 			}
 		}
@@ -584,13 +590,16 @@ func splitIntoChildChunks(parentText string) []string {
 	// Don't forget the last chunk
 	if current.Len() > 0 {
 		chunks = append(chunks, current.String())
+		log.Printf("[DEBUG splitIntoChildChunks] Chunk %d: len=%d", chunkIdx, current.Len())
 	}
 
 	// If we only have one chunk, just return it
 	if len(chunks) == 0 {
+		log.Printf("[DEBUG splitIntoChildChunks] No chunks, returning full text len=%d", len(parentText))
 		return []string{parentText}
 	}
 
+	log.Printf("[DEBUG splitIntoChildChunks] Returning %d chunks", len(chunks))
 	return chunks
 }
 
