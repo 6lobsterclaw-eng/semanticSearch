@@ -619,7 +619,8 @@ type SearchResult struct {
 	Extract   string  `json:"extract"`
 	Location  string  `json:"location"`
 	Score     float64 `json:"score"`
-	IsKeyword bool    `json:"isKeyword"` // true if from keyword search
+	Type      string  `json:"type"` // "semantic", "keyword", or "hybrid"
+	IsKeyword bool    `json:"isKeyword"` // deprecated: use Type instead
 }
 
 // Search searches indexed documents and returns enriched results
@@ -834,6 +835,7 @@ func (idx *Indexer) searchSemanticWeighted(query string, k int) []SearchResult {
 			Extract:   extract,
 			Location:  findLocation(bestChild.chunkID, p.parent.Source),
 			Score:     p.finalScore,
+			Type:      "semantic",
 			IsKeyword: false,
 		})
 	}
@@ -921,6 +923,7 @@ func (idx *Indexer) searchSemantic(query string, k int) []SearchResult {
 			Extract:   extract,
 			Location:  location,
 			Score:     float64(r.Relevance),
+			Type:      "semantic",
 			IsKeyword: false, // Semantic result
 		})
 	}
@@ -1134,6 +1137,7 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 			Extract:   extract,
 			Location:  location,
 			Score:     hit.Score, // Use BM25 score directly
+			Type:      "keyword",
 			IsKeyword: true,
 		})
 		hitIndex++
@@ -1169,6 +1173,7 @@ func (idx *Indexer) searchKeywordFallback(query string, k int) []SearchResult {
 				Extract:   extract,
 				Location:  location,
 				Score:     float64(pos),
+				Type:      "keyword",
 				IsKeyword: true,
 			})
 		}
@@ -1248,9 +1253,18 @@ func (idx *Indexer) mergeResults(query string, semantic, keyword []SearchResult,
 			continue
 		}
 		
-		// Determine if it's keyword (true if only keyword, false if only semantic)
-		// If both, show as keyword since keyword is more precise for exact matches
-		isKeyword := r.keyword
+		// Determine the search type:
+		// - "semantic" if only semantic contributed
+		// - "keyword" if only keyword contributed
+		// - "hybrid" if both contributed
+		var searchType string
+		if r.semantic && r.keyword {
+			searchType = "hybrid"
+		} else if r.keyword {
+			searchType = "keyword"
+		} else {
+			searchType = "semantic"
+		}
 		
 		// Show child chunk extract (not parent)
 		extract := boldKeyword(chunk.Sentence, query)
@@ -1263,7 +1277,8 @@ func (idx *Indexer) mergeResults(query string, semantic, keyword []SearchResult,
 			Extract:   extract,
 			Location:  findLocation(r.chunkID, chunk.Source),
 			Score:     r.score,
-			IsKeyword: isKeyword,
+			Type:      searchType,
+			IsKeyword: r.keyword, // keep for backward compatibility
 		})
 	}
 	
