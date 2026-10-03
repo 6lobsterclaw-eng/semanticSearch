@@ -111,12 +111,11 @@ func (idx *Indexer) InitBleveIndex() error {
 	}
 	log.Printf("[DEBUG] Step 2: Registered ngram_analyzer (unicode + lowercase + ngram_filter)")
 	
-	// Step 3: Configure Field Mapping - assign analyzer to specific field
-	fieldMapping := bleve.NewTextFieldMapping()
-	fieldMapping.Analyzer = "ngram_analyzer"
-	indexMapping.DefaultMapping.AddFieldMappingsAt("content", fieldMapping)
+	// Step 3: Set as DEFAULT analyzer for the entire index
+	// This is more reliable than field-specific mapping
+	indexMapping.DefaultAnalyzer = "ngram_analyzer"
 	
-	log.Printf("[DEBUG] Step 3: Created field mapping for 'content' with ngram_analyzer")
+	log.Printf("[DEBUG] Step 3: Set default analyzer to ngram_analyzer")
 	
 	log.Printf("[DEBUG] Creating disk index with ngram filter...")
 	
@@ -931,12 +930,11 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		}
 	}
 	
-	// Use MatchQuery with explicit ngram_analyzer
+	// Use MatchQuery with ngram_analyzer (set as default)
 	matchQuery := bleve.NewMatchQuery(query)
-	matchQuery.FieldVal = "content"
 	matchQuery.Analyzer = "ngram_analyzer"
 	
-	log.Printf("[DEBUG] Executing MatchQuery: field=content, analyzer=ngram_analyzer, query=%q", query)
+	log.Printf("[DEBUG] Executing MatchQuery: analyzer=ngram_analyzer, query=%q", query)
 
 	searchRequest := bleve.NewSearchRequest(matchQuery)
 	searchRequest.Size = k * 2
