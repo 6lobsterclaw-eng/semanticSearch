@@ -964,6 +964,10 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	// Count document frequency for each n-gram across all indexed content
 	docFreq := make(map[string]int)
 	for _, chunk := range idx.chunkMap {
+		// Only count child chunks in IDF calculation
+		if !strings.Contains(chunk.ID, "#child#") {
+			continue
+		}
 		content := strings.ToLower(chunk.Sentence)
 		for _, ng := range queryNgrams {
 			if strings.Contains(content, ng) {
@@ -978,6 +982,13 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	var filteredHits []interface{} // Use generic type for hits
 	for _, hit := range searchResult.Hits {
 		chunkID := hit.ID
+		
+		// Skip parent chunks - only return child chunks
+		if !strings.Contains(chunkID, "#child#") {
+			log.Printf("[DEBUG] Skipping parent chunk: %s", chunkID)
+			continue
+		}
+		
 		chunk, ok := idx.chunkMap[chunkID]
 		if !ok {
 			continue
