@@ -57,12 +57,41 @@ func NewIndexer(embedder interface {
 	}
 }
 
-// InitBleveIndex initializes a Bleve index for fuzzy keyword search
+// InitBleveIndex initializes a Bleve index with N-gram tokenization for fuzzy keyword search
 func (idx *Indexer) InitBleveIndex() error {
-	// Create in-memory index with default analyzer (supports fuzziness)
-	idx.bleveIdx, _ = bleve.NewMemUsing(nil, nil)
-	
-	log.Printf("[INFO] Bleve index initialized for fuzzy keyword search")
+	// Create index mapping with N-gram analyzer for fuzzy matching at index time
+	// N-gram tokenizes input into n-grams (e.g., "hello" -> "he", "hel", "hell", "ello", etc.)
+	// This allows prefix/partial matching without needing fuzzy search at query time
+	mapping := bleve.NewIndexMapping()
+
+	// Add custom analyzer with N-gram filter
+	err := mapping.AddCustomAnalyzer("ngram_analyzer", map[string]interface{}{
+		"type":          "custom",
+		"tokenizer":     "letter",
+		"token_filters": []interface{}{
+			"lowercase",
+			map[string]interface{}{
+				"type": "ngram",
+				"min":  2,
+				"max":  4,
+			},
+		},
+	})
+	if err != nil {
+		log.Printf("[WARN] Failed to add custom ngram analyzer: %v, falling back to default", err)
+		// Fall back to creating index without custom mapping
+		idx.bleveIdx, _ = bleve.NewMemUsing(nil, nil)
+	} else {
+		// Apply custom analyzer to content field
+		contentField := bleve.NewTextFieldMapping()
+		contentField.Analyzer = "ngram_analyzer"
+		mapping.DefaultMapping.AddFieldMappingsAt("content", contentField)
+
+		// Create in-memory index with custom mapping
+		idx.bleveIdx, _ = bleve.NewMemUsing(mapping, nil)
+	}
+
+	log.Printf("[INFO] Bleve index initialized with N-gram tokenizer (min=2, max=4) for fuzzy keyword search")
 	return nil
 }
 
@@ -826,24 +855,23 @@ func (idx *Indexer) searchSemantic(query string, k int) []SearchResult {
 	return out
 }
 
-// searchKeyword performs fuzzy keyword search using Bleve with N-gram
+// searchKeyword performs keyword search using Bleve with N-gram tokenization
+// N-gram was applied at index time, so we need to use N-gram analyzer at query time too
 func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	log.Printf("[DEBUG Indexer.searchKeyword] Query: %q", query)
-	
+
 	if idx.bleveIdx == nil {
 		log.Printf("[WARN] Bleve index not initialized, falling back to substring")
 		return idx.searchKeywordFallback(query, k)
 	}
-	
-	// Use Bleve fuzzy search with MatchQuery
-	matchQuery := bleve.NewMatchQuery(query)
-	matchQuery.SetFuzziness(1) // Allow 1 edit distance for typos
-	
-	searchRequest := bleve.NewSearchRequest(matchQuery)
-	searchRequest.Size = k * 2 // Get more results
-	searchRequest.From = 0
-	
-	// Execute fuzzy search
+
+	// Create a search request with N-gram analyzer for query parsing
+	// This ensures query terms are tokenized the same way as indexed content
+	searchRequest := bleve.NewSearchRequestOptions(nil, k*2, 0, false)
+	searchRequest.Query = bleve.NewMatchQuery(query)
+	// Use N-gram analyzer for query to match indexed n-grams
+	searchRequest.Analyzer = "ngram_analyzer"
+
 	searchResult, err := idx.bleveIdx.Search(searchRequest)
 	if err != nil {
 		log.Printf("[ERROR] Bleve search error: %v", err)
