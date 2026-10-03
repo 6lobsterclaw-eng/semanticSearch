@@ -977,11 +977,30 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 			continue
 		}
 		
-		// Filter false positives: only keep if query appears in content (exact match)
+		// Filter false positives: require at least 30% of query n-grams to match
+		// This allows fuzzy matches (contilever→cantilever) while filtering false positives
 		contentLower := strings.ToLower(chunk.Sentence)
-		if !strings.Contains(contentLower, queryLower) {
-			log.Printf("[DEBUG] Filtering out: %s doesn't contain %q", chunkID, query)
-			continue
+		
+		// Check if this is an exact match (query appears in content)
+		hasExactMatch := strings.Contains(contentLower, queryLower)
+		
+		// For false positive filtering: require 30% n-gram overlap OR exact match
+		queryNgrams := generateNgrams(query, 3, 10)
+		if len(queryNgrams) > 0 {
+			matchingNgrams := 0
+			for _, ng := range queryNgrams {
+				if strings.Contains(contentLower, ng) {
+					matchingNgrams++
+				}
+			}
+			matchRatio := float64(matchingNgrams) / float64(len(queryNgrams))
+			
+			// Accept if: exact match OR 30%+ n-gram overlap
+			if matchRatio < 0.30 && !hasExactMatch {
+				log.Printf("[DEBUG] Filtering out: %s matchRatio=%.2f < 0.30, no exact match", chunkID, matchRatio)
+				continue
+			}
+			log.Printf("[DEBUG] Accepting %s: exact=%v, matchRatio=%.2f", chunkID, hasExactMatch, matchRatio)
 		}
 		
 		log.Printf("[DEBUG] Using BM25 score for %s: %.4f", chunkID, hit.Score)
@@ -989,8 +1008,14 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		// Use original sentence, try to bold the matched term
 		extract := chunk.Sentence
 		
-		// Try to find and bold the matched term from Bleve fragments
-		if hit.Fragments != nil {
+		// Priority 1: Bold exact query term if found in content
+		extractLower := strings.ToLower(extract)
+		idx := strings.Index(extractLower, queryLower)
+		if idx >= 0 {
+			actual := extract[idx:idx+len(query)]
+			extract = strings.Replace(extract, actual, "<b>"+actual+"</b>", 1)
+			log.Printf("[DEBUG] Bolded exact query: %s", query)
+		} else if hit.Fragments != nil {
 			if fragments, ok := hit.Fragments["content"]; ok && len(fragments) > 0 {
 				// Extract matched terms from fragment (words between <mark> tags)
 				frag := fragments[0]
@@ -1001,7 +1026,6 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 					// Bold only the first matched term (most relevant)
 					matchedTerm := matches[0][1]
 					// Find and bold the actual term in the sentence
-					extractLower := strings.ToLower(extract)
 					matchedLower := strings.ToLower(matchedTerm)
 					idx := strings.Index(extractLower, matchedLower)
 					if idx >= 0 {
@@ -1013,20 +1037,6 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 			}
 		}
 		
-		// Fallback: bold query term if found
-		if !strings.Contains(extract, "<b>") {
-			queryLower := strings.ToLower(query)
-			extractLower := strings.ToLower(extract)
-			idx := strings.Index(extractLower, queryLower)
-			if idx >= 0 {
-				actual := extract[idx:idx+len(query)]
-				extract = strings.Replace(extract, actual, "<b>"+actual+"</b>", 1)
-			}
-		}
-		if extract == chunk.Sentence {
-			// No highlight, use boldKeyword as fallback
-			extract = boldKeyword(chunk.Sentence, query)
-		}
 		location := findLocation(chunkID, chunk.Source)
 		
 		results = append(results, SearchResult{
