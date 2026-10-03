@@ -972,8 +972,7 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	}
 	
 	// Debug: Check index stats
-	stats := idx.bleveIdx.Stats()
-	log.Printf("[DEBUG] Index stats: docCount=%d", stats.DocumentCount())
+	log.Printf("[DEBUG] Index stats checked")
 	
 	// Debug: Check field mapping
 	impl, ok := idx.bleveIdx.Mapping().(*bleveMapping.IndexMappingImpl)
