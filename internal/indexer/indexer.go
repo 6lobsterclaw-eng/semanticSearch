@@ -940,7 +940,7 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	searchRequest.Size = k * 2
 	searchRequest.From = 0
 	
-	// Enable highlighting - this will return the matched terms from the index
+	// Enable highlighting - we extract matched terms for manual bolding
 	searchRequest.Highlight = bleve.NewHighlightWithStyle("html")
 	searchRequest.Highlight.Fields = []string{"content"}
 	
@@ -1053,24 +1053,42 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 			continue
 		}
 		
-		// Use highlighted text if available, otherwise fallback to boldKeyword
+		// Use original sentence, try to bold the matched term
 		extract := chunk.Sentence
-		log.Printf("[DEBUG] Hit %d: ID=%s, Locations=%v, Fragments=%v", hitIndex+1, hit.ID, hit.Locations != nil, hit.Fragments)
+		
+		// Try to find and bold the matched term from Bleve fragments
 		if hit.Fragments != nil {
-			// Use the highlighted fragments from Bleve
 			if fragments, ok := hit.Fragments["content"]; ok && len(fragments) > 0 {
-				extract = fragments[0]
-				// Replace <em> or <mark> tags with <b> for bold
-				extract = strings.ReplaceAll(extract, "<em>", "<b>")
-				extract = strings.ReplaceAll(extract, "</em>", "</b>")
-				extract = strings.ReplaceAll(extract, "<mark>", "<b>")
-				extract = strings.ReplaceAll(extract, "</mark>", "</b>")
-				log.Printf("[DEBUG] Using highlighted fragment for %s: %s", chunkID, extract)
-			} else {
-				log.Printf("[DEBUG] No content fragments found for %s", chunkID)
+				// Extract matched terms from fragment (words between <mark> tags)
+				frag := fragments[0]
+				// Find terms wrapped in <mark>...</mark>
+				re := regexp.MustCompile(`<mark>([^<]+)</mark>`)
+				matches := re.FindAllStringSubmatch(frag, -1)
+				if len(matches) > 0 {
+					// Bold only the first matched term (most relevant)
+					matchedTerm := matches[0][1]
+					// Find and bold the actual term in the sentence
+					extractLower := strings.ToLower(extract)
+					matchedLower := strings.ToLower(matchedTerm)
+					idx := strings.Index(extractLower, matchedLower)
+					if idx >= 0 {
+						actual := extract[idx:idx+len(matchedTerm)]
+						extract = strings.Replace(extract, actual, "<b>"+actual+"</b>", 1)
+						log.Printf("[DEBUG] Bolded matched term: %s", matchedTerm)
+					}
+				}
 			}
-		} else {
-			log.Printf("[DEBUG] No fragments at all for %s", chunkID)
+		}
+		
+		// Fallback: bold query term if found
+		if !strings.Contains(extract, "<b>") {
+			queryLower := strings.ToLower(query)
+			extractLower := strings.ToLower(extract)
+			idx := strings.Index(extractLower, queryLower)
+			if idx >= 0 {
+				actual := extract[idx:idx+len(query)]
+				extract = strings.Replace(extract, actual, "<b>"+actual+"</b>", 1)
+			}
 		}
 		if extract == chunk.Sentence {
 			// No highlight, use boldKeyword as fallback
