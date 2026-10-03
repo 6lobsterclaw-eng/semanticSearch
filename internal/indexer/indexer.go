@@ -121,8 +121,12 @@ func (idx *Indexer) InitBleveIndex() error {
 
 	log.Printf("[INFO] Bleve index initialized with N-gram analyzer (disk-based)")
 	
+	// Debug: Verify mapping
 	if idx.bleveIdx != nil {
 		log.Printf("[DEBUG] Bleve index is initialized (disk)")
+		if mapping := idx.bleveIdx.Mapping(); mapping != nil {
+			log.Printf("[DEBUG] Init: Default analyzer = %q", mapping.DefaultAnalyzer)
+		}
 	} else {
 		log.Printf("[ERROR] Bleve index is NIL!")
 	}
@@ -324,11 +328,16 @@ func (idx *Indexer) indexFile(path string) (int, error) {
 					"source":   title,
 					"content":  childContent,
 				}
+				
 				log.Printf("[DEBUG] Indexing doc: id=%s, content_len=%d", childID, len(childContent))
-				idx.bleveIdx.Index(childID, doc)
+				if err := idx.bleveIdx.Index(childID, doc); err != nil {
+					log.Printf("[ERROR] Bleve index error: %v", err)
+				} else {
+					log.Printf("[DEBUG] Successfully indexed: %s", childID)
+				}
+			} else {
+				log.Printf("[WARN] Bleve index is nil, skipping indexing")
 			}
-		}
-	}
 
 	log.Printf("Indexing %s: total %d child chunks indexed", path, childCount)
 
@@ -907,6 +916,14 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 
 	log.Printf("[DEBUG] searchKeyword: query=%q, field=%q, index=%v", 
 		query, "content", idx.bleveIdx != nil)
+	
+	// Debug: Get and log the index mapping
+	if mapping := idx.bleveIdx.Mapping(); mapping != nil {
+		log.Printf("[DEBUG] Index mapping default analyzer: %q", mapping.DefaultAnalyzer)
+		if field, ok := mapping.Fields["content"]; ok {
+			log.Printf("[DEBUG] Content field analyzer: %v", field)
+		}
+	}
 	
 	searchRequest := bleve.NewSearchRequest(matchQuery)
 	searchRequest.Size = k * 2
