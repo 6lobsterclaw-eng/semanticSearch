@@ -62,6 +62,9 @@ func main() {
 	// Enable mouse
 	app.EnableMouse(true)
 
+	// Set root pages
+	app.SetRoot(pages, true)
+
 	// Run the app
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
