@@ -336,8 +336,9 @@ func (idx *Indexer) indexFile(path string) (int, error) {
 				log.Printf("[DEBUG BLEVE]   content = %q", childContent[:min(100, len(childContent))])
 				
 				// Debug: Get analyzer for content field
-				if mapping := idx.bleveIdx.Mapping(); mapping != nil {
-					if field, ok := mapping.DefaultMapping.Fields["content"]; ok {
+				impl, ok := idx.bleveIdx.Mapping().(*bleveMapping.IndexMappingImpl)
+				if ok {
+					if field, fok := impl.DefaultMapping.Fields["content"]; fok {
 						log.Printf("[DEBUG BLEVE]   field 'content' analyzer = %s", field.Analyzer)
 					}
 				}
@@ -928,9 +929,10 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	log.Printf("[DEBUG BLEVE] Index stats: %+v", stats)
 	
 	// Debug: Check field mapping
-	if mapping := idx.bleveIdx.Mapping(); mapping != nil {
-		log.Printf("[DEBUG BLEVE] Index has %d fields in default mapping", len(mapping.DefaultMapping.Fields))
-		for name, field := range mapping.DefaultMapping.Fields {
+	impl, ok := idx.bleveIdx.Mapping().(*bleveMapping.IndexMappingImpl)
+	if ok {
+		log.Printf("[DEBUG BLEVE] Index has %d fields in default mapping", len(impl.DefaultMapping.Fields))
+		for name, field := range impl.DefaultMapping.Fields {
 			log.Printf("[DEBUG BLEVE]   Field: %s, Analyzer: %s", name, field.Analyzer)
 		}
 	}
