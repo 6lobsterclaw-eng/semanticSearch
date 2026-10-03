@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/6lobsterclaw-eng/semanticSearch/internal/indexer"
-	"github.com/6lobsterclaw-eng/semanticSearch/internal/semantic"
+	"semantic-search/internal/indexer"
+	"semantic-search/internal/semantic"
 	"github.com/rivo/tview"
 )
 
