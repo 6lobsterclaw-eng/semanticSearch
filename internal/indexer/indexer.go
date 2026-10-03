@@ -114,10 +114,6 @@ func (idx *Indexer) InitBleveIndex() error {
 		return nil
 	}
 
-	// Verify analyzer is available
-	analyzerNames := mapping.AnalyzerNames()
-	log.Printf("[DEBUG] Available analyzers in mapping: %v", analyzerNames)
-
 	log.Printf("[INFO] Bleve index initialized with Edge N-gram analyzer (min=2, max=10)")
 	return nil
 }
