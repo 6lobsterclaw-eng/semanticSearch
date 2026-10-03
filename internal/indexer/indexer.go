@@ -546,8 +546,8 @@ func splitIntoParentChunks(text string) []string {
 	return result
 }
 
-// splitIntoChildChunks splits parent chunk into smaller child chunks (~150 tokens / ~800 chars)
-// Each child is 1-2 sentences for precise vector matching
+// splitIntoChildChunks splits parent chunk into smaller child chunks (~150-200 chars)
+// Splits on newlines, bullets, headers first, then merges into ~200 char chunks
 func splitIntoChildChunks(parentText string) []string {
 	if len(parentText) == 0 {
 		return nil
@@ -555,44 +555,75 @@ func splitIntoChildChunks(parentText string) []string {
 
 	log.Printf("[DEBUG splitIntoChildChunks] Input: len=%d", len(parentText))
 	
-	// Use the existing sentence splitting logic
-	sentences := splitIntoSentences(parentText)
-	log.Printf("[DEBUG splitIntoChildChunks] Found %d sentences", len(sentences))
+	// Step 1: Split on multiple boundaries - newlines, bullets, headers, sentence endings
+	// This regex splits on: double newlines, single newlines, markdown headers, list bullets, sentence endings
+	re := regexp.MustCompile(`(?m)(?:\n\n|\n|#+\s|[-*•]\s+|[.!?]+\s*)`)
+	parts := re.Split(parentText, -1)
+	
+	var segments []string
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if len(trimmed) > 10 { // Skip very small fragments
+			segments = append(segments, trimmed)
+		}
+	}
+	
+	log.Printf("[DEBUG splitIntoChildChunks] Found %d segments from regex split", len(segments))
 
-	// Merge sentences into chunks of ~200 chars (~1-2 sentences, ~40 tokens)
+	// Step 2: Merge segments into ~200 char chunks
 	var chunks []string
 	var current strings.Builder
 	
-	chunkIdx := 0
-	for _, sentence := range sentences {
-		if current.Len()+len(sentence)+1 > 200 {
+	for _, segment := range segments {
+		// If single segment is > 200 chars, split it further
+		if len(segment) > 200 {
+			// First, save current if any
+			if current.Len() > 0 {
+				chunks = append(chunks, current.String())
+				current.Reset()
+			}
+			// Split this large segment into smaller pieces
+			for i := 0; i < len(segment); i += 180 {
+				end := i + 180
+				if end > len(segment) {
+					end = len(segment)
+				}
+				chunks = append(chunks, segment[i:end])
+			}
+			continue
+		}
+		
+		// Check if adding this segment would exceed 200 chars
+		if current.Len()+len(segment)+1 > 200 {
 			// Current chunk is full, save it
 			if current.Len() > 0 {
 				chunks = append(chunks, current.String())
-				log.Printf("[DEBUG splitIntoChildChunks] Chunk %d: len=%d", chunkIdx, current.Len())
-				chunkIdx++
-				current.Reset()
 			}
+			current.Reset()
 		}
+		
+		// Add segment to current chunk
 		if current.Len() > 0 {
-			current.WriteString(". ")
+			current.WriteString(" ")
 		}
-		current.WriteString(sentence)
+		current.WriteString(segment)
 	}
-
+	
 	// Don't forget the last chunk
 	if current.Len() > 0 {
 		chunks = append(chunks, current.String())
-		log.Printf("[DEBUG splitIntoChildChunks] Chunk %d: len=%d", chunkIdx, current.Len())
 	}
 
-	// If we only have one chunk, just return it
+	// If we ended up with no chunks, return the original
 	if len(chunks) == 0 {
 		log.Printf("[DEBUG splitIntoChildChunks] No chunks, returning full text len=%d", len(parentText))
 		return []string{parentText}
 	}
 
 	log.Printf("[DEBUG splitIntoChildChunks] Returning %d chunks", len(chunks))
+	for i, c := range chunks {
+		log.Printf("[DEBUG splitIntoChildChunks]   Chunk %d: len=%d", i, len(c))
+	}
 	return chunks
 }
 
