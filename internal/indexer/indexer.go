@@ -110,10 +110,6 @@ func (idx *Indexer) InitBleveIndex() error {
 	}
 	log.Printf("[DEBUG] Step 2: Registered ngram_analyzer")
 	
-	// Debug: List all registered analyzers
-	analyzers := indexMapping.Analyzers()
-	log.Printf("[DEBUG] Registered analyzers: %v", analyzers)
-	
 	// Step 3: Create Split Analyzer mapping - add fields to default mapping
 	// - content: Standard analyzer (exact matching)
 	// - content_ngram: N-gram analyzer (fuzzy matching)
