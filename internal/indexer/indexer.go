@@ -952,34 +952,15 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		return idx.searchKeywordFallback(query, k)
 	}
 	
-	log.Printf("[DEBUG] Search completed: %d hits found", len(searchResult.Hits))
+	log.Printf("[DEBUG] Search completed: %d hits found (BM25 scoring)", len(searchResult.Hits))
 	for i, hit := range searchResult.Hits {
 		log.Printf("[DEBUG]   Hit %d: ID=%s, Score=%.4f", i+1, hit.ID, hit.Score)
 	}
 
-	// Generate n-grams from query for IDF-like filtering
-	queryNgrams := generateNgrams(query, 3, 10)
-	log.Printf("[DEBUG] Query n-grams for IDF filter: %v", queryNgrams)
+	var results []SearchResult
 	
-	// Count document frequency for each n-gram across all indexed content
-	docFreq := make(map[string]int)
-	for _, chunk := range idx.chunkMap {
-		// Only count child chunks in IDF calculation
-		if !strings.Contains(chunk.ID, "#child#") {
-			continue
-		}
-		content := strings.ToLower(chunk.Sentence)
-		for _, ng := range queryNgrams {
-			if strings.Contains(content, ng) {
-				docFreq[ng]++
-			}
-		}
-	}
-	totalDocs := float64(len(idx.chunkMap))
-	log.Printf("[DEBUG] Total docs: %d, DocFreq: %v", len(idx.chunkMap), docFreq)
-	
-	// Calculate IDF weights and filter hits
-	var filteredHits []interface{} // Use generic type for hits
+	// Process hits - skip parent chunks, use BM25 scores directly
+	hitIndex := 0
 	for _, hit := range searchResult.Hits {
 		chunkID := hit.ID
 		
@@ -994,75 +975,7 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 			continue
 		}
 		
-		// Count matching n-grams in this document with IDF weighting
-		content := strings.ToLower(chunk.Sentence)
-		idfScore := 0.0
-		matchingNgrams := 0
-		for _, ng := range queryNgrams {
-			if strings.Contains(content, ng) {
-				matchingNgrams++
-				// IDF = log(N / df) - higher for rare terms
-				df := docFreq[ng]
-				if df > 0 {
-					idfScore += math.Log(totalDocs / float64(df))
-				} else {
-					idfScore += math.Log(totalDocs) // max IDF if not found (shouldn't happen)
-				}
-			}
-		}
-		
-		// Keep only if at least 50% of query n-grams are found AND IDF score is significant
-		matchRatio := float64(matchingNgrams) / float64(len(queryNgrams))
-		log.Printf("[DEBUG] Hit %s: matchRatio=%.2f, idfScore=%.2f, matchingNgrams=%d/%d", 
-			hit.ID, matchRatio, idfScore, matchingNgrams, len(queryNgrams))
-		
-		// Keep hits where at least 50% of n-grams match AND IDF > 1.0 (term is somewhat rare)
-		if matchRatio >= 0.5 && idfScore > 1.0 {
-			filteredHits = append(filteredHits, hit)
-		}
-	}
-	
-	log.Printf("[DEBUG] After IDF filter: processing hits with IDF scoring", len(searchResult.Hits))
-	
-	var results []SearchResult
-	
-	// Process hits with IDF filtering inline
-	hitIndex := 0
-	for _, hit := range searchResult.Hits {
-		chunkID := hit.ID
-		
-		// Get chunk from our map
-		chunk, ok := idx.chunkMap[chunkID]
-		if !ok {
-			continue
-		}
-		
-		// Count matching n-grams in this document with IDF weighting
-		content := strings.ToLower(chunk.Sentence)
-		idfScore := 0.0
-		matchingNgrams := 0
-		for _, ng := range queryNgrams {
-			if strings.Contains(content, ng) {
-				matchingNgrams++
-				// IDF = log(N / df) - higher for rare terms
-				df := docFreq[ng]
-				if df > 0 {
-					idfScore += math.Log(totalDocs / float64(df))
-				} else {
-					idfScore += math.Log(totalDocs) // max IDF if not found
-				}
-			}
-		}
-		
-		// Keep only if at least 25% of query n-grams are found AND IDF score is significant
-		matchRatio := float64(matchingNgrams) / float64(len(queryNgrams))
-		log.Printf("[DEBUG] Hit %s: matchRatio=%.2f, idfScore=%.2f, matchingNgrams=%d/%d", 
-			hit.ID, matchRatio, idfScore, matchingNgrams, len(queryNgrams))
-		
-		// Lower threshold to 25% to allow more misspellings
-		if matchRatio < 0.25 || idfScore <= 1.0 {
-			continue
-		}
+		log.Printf("[DEBUG] Using BM25 score for %s: %.4f", chunkID, hit.Score)
 		
 		// Use original sentence, try to bold the matched term
 		extract := chunk.Sentence
@@ -1113,17 +1026,18 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 			Title:     chunk.Source,
 			Extract:   extract,
 			Location:  location,
-			Score:     float64(k) - float64(hitIndex), // Higher score for better matches
+			Score:     hit.Score, // Use BM25 score directly
 			IsKeyword: true,
 		})
 		hitIndex++
 	}
-	
+
 	// Assign proper indices
 	for i := range results {
 		results[i].Index = i + 1
 	}
-	
+
+	log.Printf("[DEBUG] Returning %d results (child chunks only)", len(results))
 	return results
 }
 
