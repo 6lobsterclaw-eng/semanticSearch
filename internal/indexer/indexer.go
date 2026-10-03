@@ -939,6 +939,7 @@ func (idx *Indexer) searchSemantic(query string, k int) []SearchResult {
 // searchKeyword performs keyword search using Bleve with N-gram tokenization
 // N-gram was applied at index time, so we need to use N-gram analyzer at query time too
 func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
+	log.Printf("[DEBUG Indexer.searchKeyword] Query: %q, k: %d", query, k)
 	log.Printf("[DEBUG] searchKeyword: query=%q", query)
 	
 	if idx.bleveIdx == nil {
@@ -1154,6 +1155,7 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	// Assign proper indices
 	for i := range results {
 		results[i].Index = i + 1
+		log.Printf("[DEBUG] Keyword result %d: chunkID=%s, extract=%q", i+1, results[i].ChunkID, results[i].Extract[:min(80, len(results[i].Extract))])
 	}
 
 	log.Printf("[DEBUG] Returning %d results (child chunks only)", len(results))
@@ -1208,10 +1210,16 @@ func (idx *Indexer) searchKeywordFallback(query string, k int) []SearchResult {
 // RRF Formula: Score = 1/(k+rank_semantic) + 1/(k+rank_keyword)
 // k=60 is the smoothing constant to prevent top results from dominating
 func (idx *Indexer) mergeResults(query string, semantic, keyword []SearchResult, mode string) []SearchResult {
+	log.Printf("[DEBUG mergeResults] mode=%s, semantic=%d, keyword=%d", mode, len(semantic), len(keyword))
+	
 	if mode == "semantic" {
 		return semantic
 	}
 	if mode == "keyword" {
+		log.Printf("[DEBUG mergeResults] keyword-only mode: returning %d keyword results", len(keyword))
+		for i, r := range keyword {
+			log.Printf("[DEBUG mergeResults] keyword result %d: chunkID=%s, extract=%q", i+1, r.ChunkID, r.Extract[:min(80, len(r.Extract))])
+		}
 		return keyword
 	}
 
