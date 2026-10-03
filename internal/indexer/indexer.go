@@ -75,28 +75,28 @@ func (idx *Indexer) InitBleveIndex() error {
 	// Create new index mapping
 	indexMapping := bleve.NewIndexMapping()
 	
-	// Step 1: Register custom edge n-gram token filter
-	edgeNgramFilter := map[string]interface{}{
-		"type": "edge_ngram",
+	// Step 1: Register custom n-gram token filter (regular n-gram, not edge)
+	// Regular n-gram creates substrings from ALL positions - handles compound words & typos
+	ngramFilter := map[string]interface{}{
+		"type": "ngram",
 		"min":  float64(2),
 		"max":  float64(8),
-		"back": false, // front edge n-gram
 	}
 	
-	err := indexMapping.AddCustomTokenFilter("edge_ngram_filter", edgeNgramFilter)
+	err := indexMapping.AddCustomTokenFilter("ngram_filter", ngramFilter)
 	if err != nil {
 		log.Printf("[ERROR] AddCustomTokenFilter failed: %v", err)
 		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
 		return nil
 	}
-	log.Printf("[DEBUG] Step 1: Registered custom token filter: edge_ngram_filter")
+	log.Printf("[DEBUG] Step 1: Registered custom token filter: ngram_filter (regular n-gram)")
 	
 	// Step 2: Create custom analyzer using the registered filter
 	customAnalyzer := map[string]interface{}{
 		"type":      "custom",
 		"tokenizer": "unicode",
 		"token_filters": []interface{}{
-			"edge_ngram_filter",
+			"ngram_filter",
 			"lowercase",
 		},
 	}
