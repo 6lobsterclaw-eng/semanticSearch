@@ -9,8 +9,8 @@ require (
 	github.com/kelindar/search v0.5.0
 	github.com/kelindar/search/llama v0.0.0-20260919083510-1c30877fb8bd
 	github.com/ledongthuc/pdf v0.0.0-20260907135840-6c8c28e0e8a0
-	github.com/rivo/tview v0.0.0-20240915082403-9e4f77e3b06e
-	github.com/gdamore/tcell/v3 v3.0.0
+	github.com/rivo/tview v0.42.0
+	github.com/gdamore/tcell v2.6.12
 	modernc.org/sqlite v1.59.0
 )
 
