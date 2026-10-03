@@ -131,16 +131,6 @@ modernc.org/sortutil v1.2.1/go.mod h1:7ZI3a3REbai7gzCLcotuw9AC4VZVpYMjDzETGsSMqJ
 modernc.org/sqlite v1.59.0 h1:X1es1GpqBlS/5T+vbM4HLUdaa8OtQx468DF2vrx+38A=
 github.com/rivo/tview v0.42.0 h1:l3lqjW3zG7vP4B4vLuH1T4mD7xK3vZJG5QvYvK7Q=
 github.com/rivo/tview v0.42.0/go.mod h1:sx4cKqK5/nY5r1UNCL8qJIxZ4D3y9d8ti6+7K1P1mh8=
-github.com/gdamore/tcell v2.6.12 h1:8wppCNz0GQ4t2V41T0b4x6rU5j0v7v3n6y5t5f3w=
-github.com/gdamore/tcell v2.6.12/go.mod h1:onxGpsbcE0S1+qPg5VQc8S1O0a1r9gY5AJ4cA2lqtfc=
-github.com/gdamore/tcell v1.4.0 h1:nq8NtWFVe2IKso0gA2gYpLV3t7cXb3GS2eV5QvKZzJY=
-github.com/gdamore/tcell v1.4.0/go.mod h1:onxGpsbcE0S1+qPg5VQc8S1O0a1r9gY5AJ4cA2lqtfc=
-github.com/lucasb-eyer/go-colorful v1.2.0 h1:1nnpGOrCGZZu8wlX9DNlkgBh7JFtSxVhLHFtuhD0xLs=
-github.com/lucasb-eyer/go-colorful v1.2.0/go.mod h1:R4dlXU7dQSFFU5T4rFw/SleryJPK1pOCD2u7bv0qP7U=
-github.com/mattn/go-runewidth v0.0.15 h1:UNAjwbU9l54TA3KzvqLGxwWjHmMgBUVhBiTjelZgg3U=
-github.com/mattn/go-runewidth v0.0.15/go.mod h1:Jdepj2loyihRzMpdS35Xk/zdY8IAYHsh153qUoGf23w=
-github.com/rivo/uniseg v0.4.4 h1:8TfxU8dW6PdqD27gjM8MVNuicgxIjxpm4K7x4jp8sis=
-github.com/rivo/uniseg v0.4.4/go.mod h1:FN3SvrM+Zdj16jyLfmOkMNblXMcoc8DfTHruCPUcx88=
 
 modernc.org/sqlite v1.59.0/go.mod h1:+paeT2A3iPRHkQDwG7oA6Tk0zQd5woMEI8q7orfry8k=
 modernc.org/strutil v1.2.1 h1:UneZBkQA+DX2Rp35KcM69cSsNES9ly8mQWD71HKlOA0=

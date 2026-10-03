@@ -10,7 +10,6 @@ require (
 	github.com/kelindar/search/llama v0.0.0-20260919083510-1c30877fb8bd
 	github.com/ledongthuc/pdf v0.0.0-20260907135840-6c8c28e0e8a0
 	github.com/rivo/tview v0.42.0
-	github.com/gdamore/tcell v2.6.12
 	modernc.org/sqlite v1.59.0
 )
 
