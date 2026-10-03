@@ -108,8 +108,12 @@ func (idx *Indexer) InitBleveIndex() error {
 	}
 	log.Printf("[DEBUG] Registered custom analyzer: ngram_analyzer")
 
-	// Set as default for ALL fields - use the field directly
-	mapping.DefaultAnalyzer = "ngram_analyzer"
+	// Set analyzer on the field mapping, not just default
+	fieldMapping := bleve.NewTextFieldMapping()
+	fieldMapping.Analyzer = "ngram_analyzer"
+	mapping.DefaultMapping.AddFieldMappingsAt("content", fieldMapping)
+	
+	log.Printf("[DEBUG] Created field mapping for 'content' with ngram_analyzer")
 	
 	log.Printf("[DEBUG] Creating disk index with ngram analyzer...")
 	
