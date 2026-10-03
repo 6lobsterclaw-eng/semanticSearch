@@ -956,15 +956,68 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	for i, hit := range searchResult.Hits {
 		log.Printf("[DEBUG]   Hit %d: ID=%s, Score=%.4f", i+1, hit.ID, hit.Score)
 	}
+
+	// Generate n-grams from query for IDF-like filtering
+	queryNgrams := generateNgrams(query, 3, 10)
+	log.Printf("[DEBUG] Query n-grams for IDF filter: %v", queryNgrams)
 	
-	// Score filtering disabled for testing
-	// Relative score threshold: keep only hits with score > 30% of max score
+	// Count document frequency for each n-gram across all indexed content
+	docFreq := make(map[string]int)
+	for _, chunk := range idx.chunkMap {
+		content := strings.ToLower(chunk.Sentence)
+		for _, ng := range queryNgrams {
+			if strings.Contains(content, ng) {
+				docFreq[ng]++
+			}
+		}
+	}
+	totalDocs := float64(len(idx.chunkMap))
+	log.Printf("[DEBUG] Total docs: %d, DocFreq: %v", len(idx.chunkMap), docFreq)
+	
+	// Calculate IDF weights and filter hits
+	var filteredHits []*search.DocumentMatch
+	for _, hit := range searchResult.Hits {
+		chunkID := hit.ID
+		chunk, ok := idx.chunkMap[chunkID]
+		if !ok {
+			continue
+		}
+		
+		// Count matching n-grams in this document with IDF weighting
+		content := strings.ToLower(chunk.Sentence)
+		idfScore := 0.0
+		matchingNgrams := 0
+		for _, ng := range queryNgrams {
+			if strings.Contains(content, ng) {
+				matchingNgrams++
+				// IDF = log(N / df) - higher for rare terms
+				df := docFreq[ng]
+				if df > 0 {
+					idfScore += math.Log(totalDocs / float64(df))
+				} else {
+					idfScore += math.Log(totalDocs) // max IDF if not found (shouldn't happen)
+				}
+			}
+		}
+		
+		// Keep only if at least 50% of query n-grams are found AND IDF score is significant
+		matchRatio := float64(matchingNgrams) / float64(len(queryNgrams))
+		log.Printf("[DEBUG] Hit %s: matchRatio=%.2f, idfScore=%.2f, matchingNgrams=%d/%d", 
+			hit.ID, matchRatio, idfScore, matchingNgrams, len(queryNgrams))
+		
+		// Keep hits where at least 50% of n-grams match AND IDF > 1.0 (term is somewhat rare)
+		if matchRatio >= 0.5 && idfScore > 1.0 {
+			filteredHits = append(filteredHits, hit)
+		}
+	}
+	
+	log.Printf("[DEBUG] After IDF filter: %d hits (from %d)", len(filteredHits), len(searchResult.Hits))
 	
 	var results []SearchResult
 	
-	// Process all hits without filtering
+	// Process filtered hits
 	hitIndex := 0
-	for _, hit := range searchResult.Hits {
+	for _, hit := range filteredHits {
 		chunkID := hit.ID
 		
 		// Get chunk from our map
@@ -1193,14 +1246,23 @@ func findSentenceEnd(content string, pos int) int {
 func findLocation(chunkID, source string) string {
 	// Get just the filename from source path
 	filename := filepath.Base(source)
-
-	// Extract chunk index from chunkID (format: "filename#index")
+	// Extract chunk number from chunkID (format: filename.md#child#0#N)
 	parts := strings.Split(chunkID, "#")
-	chunkNum := 1
-	if len(parts) >= 2 {
-		fmt.Sscanf(parts[1], "%d", &chunkNum)
-		chunkNum++ // Make it 1-indexed
+	if len(parts) >= 4 {
+		chunkNum := parts[len(parts)-1]
+		return fmt.Sprintf("%s (chunk %s)", filename, chunkNum)
 	}
+	return filename
+}
 
-	return fmt.Sprintf("%s(%d)", filename, chunkNum)
+// generateNgrams generates character n-grams from a string
+func generateNgrams(s string, minLen, maxLen int) []string {
+	s = strings.ToLower(s)
+	var ngrams []string
+	for length := minLen; length <= maxLen; length++ {
+		for i := 0; i <= len(s)-length; i++ {
+			ngrams = append(ngrams, s[i:i+length])
+		}
+	}
+	return ngrams
 }
