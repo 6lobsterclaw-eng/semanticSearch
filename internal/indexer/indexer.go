@@ -60,38 +60,43 @@ func NewIndexer(embedder interface {
 // InitBleveIndex initializes a Bleve index with N-gram tokenization for fuzzy keyword search
 func (idx *Indexer) InitBleveIndex() error {
 	// Create index mapping with N-gram analyzer for fuzzy matching at index time
-	// N-gram tokenizes input into n-grams (e.g., "hello" -> "he", "hel", "hell", "ello", etc.)
-	// This allows prefix/partial matching without needing fuzzy search at query time
 	mapping := bleve.NewIndexMapping()
 
-	// Add custom analyzer with N-gram filter
+	// Add custom analyzer with ngram token filter
+	// Using "standard" analyzer base with ngram filter applied
 	err := mapping.AddCustomAnalyzer("ngram_analyzer", map[string]interface{}{
-		"type":          "custom",
-		"tokenizer":     "letter",
+		"type":      "custom",
+		"tokenizer": "letter",
 		"token_filters": []interface{}{
 			"lowercase",
 			map[string]interface{}{
 				"type": "ngram",
-				"min":  2,
-				"max":  4,
+				"min":  float64(2),
+				"max":  float64(4),
 			},
 		},
 	})
 	if err != nil {
-		log.Printf("[WARN] Failed to add custom ngram analyzer: %v, falling back to default", err)
-		// Fall back to creating index without custom mapping
-		idx.bleveIdx, _ = bleve.NewMemOnly(nil)
-	} else {
-		// Apply custom analyzer to content field
-		contentField := bleve.NewTextFieldMapping()
-		contentField.Analyzer = "ngram_analyzer"
-		mapping.DefaultMapping.AddFieldMappingsAt("content", contentField)
-
-		// Create in-memory index with custom mapping
-		idx.bleveIdx, _ = bleve.NewMemOnly(mapping)
+		log.Printf("[WARN] Failed to add custom ngram analyzer: %v", err)
+		// Fall back to creating index without custom mapping - use simple in-memory
+		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
+		log.Printf("[INFO] Bleve index initialized with default analyzer")
+		return nil
 	}
 
-	log.Printf("[INFO] Bleve index initialized with N-gram tokenizer (min=2, max=4) for fuzzy keyword search")
+	// Apply custom analyzer to content field
+	contentField := bleve.NewTextFieldMapping()
+	contentField.Analyzer = "ngram_analyzer"
+	mapping.DefaultMapping.AddFieldMappingsAt("content", contentField)
+
+	// Create in-memory index with custom mapping
+	idx.bleveIdx, err = bleve.NewMemOnly(mapping)
+	if err != nil {
+		log.Printf("[WARN] Failed to create index with ngram: %v, using default", err)
+		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
+	}
+
+	log.Printf("[INFO] Bleve index initialized with N-gram tokenizer (min=2, max=4)")
 	return nil
 }
 
