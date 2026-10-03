@@ -44,6 +44,7 @@ type SearchResult struct {
 	Extract  string  `json:"extract"`
 	Location string  `json:"location"`
 	Score    float64 `json:"score"`
+	Type     string  `json:"type"` // "semantic", "keyword", or "hybrid"
 }
 
 // JSONEscape escapes a string for safe JSON embedding
@@ -603,7 +604,11 @@ func main() {
                         '<thead><tr><th>#</th><th>Extract</th><th>Location</th><th>Score</th><th>Type</th></tr></thead>' +
                         '<tbody>';
                     d.forEach(function(r) {
-                        var typeLabel = r.isKeyword ? '🔍 Keyword' : '🧠 Semantic';
+                        var typeLabel = r.type;
+                        if (typeLabel === 'hybrid') typeLabel = '🔗 Hybrid';
+                        else if (typeLabel === 'keyword') typeLabel = '🔍 Keyword';
+                        else if (typeLabel === 'semantic') typeLabel = '🧠 Semantic';
+                        else typeLabel = r.isKeyword ? '🔍 Keyword' : '🧠 Semantic';
                         html += '<tr>' +
                             '<td>' + r.index + '</td>' +
                             '<td>' + r.extract + '</td>' +
