@@ -985,6 +985,8 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 			log.Printf("[ERROR] Fuzzy search also failed: %v", exactErr)
 			return idx.searchKeywordFallback(query, k)
 		}
+	}
+	
 	searchResult := finalResult
 	
 	// Enable highlighting
@@ -1024,7 +1026,7 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		hasExactMatch := strings.Contains(contentLower, queryLower)
 		
 		// For false positive filtering: require 30% n-gram overlap OR exact match
-		queryNgrams := generateNgrams(query, 3, 10)
+		queryNgrams := generateNgrams(query, 2, 4)
 		if len(queryNgrams) > 0 {
 			matchingNgrams := 0
 			for _, ng := range queryNgrams {
