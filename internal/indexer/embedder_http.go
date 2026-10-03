@@ -38,6 +38,13 @@ func NewSimpleVectorStore() *SimpleVectorStore {
 	}
 }
 
+// Size returns the number of vectors in the store
+func (s *SimpleVectorStore) Size() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.vectors)
+}
+
 func (s *SimpleVectorStore) Add(id string, vec search.Vector, content string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -320,6 +327,11 @@ func (e *HTTPEmbedder) LoadIndex(path string) error {
 // Dim returns the embedding dimension
 func (e *HTTPEmbedder) Dim() int {
 	return e.dim
+}
+
+// Size returns the number of vectors in the store
+func (e *HTTPEmbedder) Size() int {
+	return e.simpleStore.Size()
 }
 
 // Close releases resources
