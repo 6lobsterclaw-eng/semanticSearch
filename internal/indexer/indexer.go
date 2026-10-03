@@ -81,7 +81,7 @@ func (idx *Indexer) InitBleveIndex() error {
 	ngramFilter := map[string]interface{}{
 		"type": "ngram",
 		"min":  float64(2),
-		"max":  float64(8),
+		"max":  float64(10),
 	}
 	
 	err := indexMapping.AddCustomTokenFilter("ngram_filter", ngramFilter)
