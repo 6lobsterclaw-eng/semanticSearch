@@ -543,7 +543,7 @@ func main() {
         function exportIndex() {
             if (!indexed) { alert('Nothing to export'); return; }
             
-            var path = prompt('Enter path to save index file:', 'index.idx');
+            var path = prompt('Enter path to save index folder:', 'C:\\data\\index');
             if (!path) return;
             
             document.getElementById('indexStatus').innerHTML = '<div class="info">Exporting index...</div>';
@@ -561,7 +561,7 @@ func main() {
         function importIndex() {
             if (!serverRunning) { alert('Please start server first'); return; }
             
-            var path = prompt('Enter path to index file:');
+            var path = prompt('Enter path to index folder:');
             if (!path) return;
             
             importIndexFile(path);
