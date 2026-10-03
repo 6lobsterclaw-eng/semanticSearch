@@ -68,6 +68,8 @@ func (idx *Indexer) InitBleveIndex() error {
 	// Create index mapping with Edge N-gram analyzer for prefix/fuzzy matching
 	mapping := bleve.NewIndexMapping()
 
+	log.Printf("[DEBUG] Creating custom analyzer 'ngram_analyzer'...")
+
 	// Add custom analyzer with edge_ngram token filter
 	// Edge n-gram creates n-grams from the start of the token (e.g., "hello" -> "he", "hel", "hell", "hello")
 	// This is ideal for prefix matching and handling typos
@@ -85,24 +87,36 @@ func (idx *Indexer) InitBleveIndex() error {
 		},
 	})
 	if err != nil {
-		log.Printf("[WARN] Failed to add custom ngram analyzer: %v", err)
+		log.Printf("[ERROR] Failed to add custom ngram analyzer: %v", err)
+		log.Printf("[DEBUG] Falling back to default analyzer")
 		// Fall back to creating index without custom mapping
 		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
 		log.Printf("[INFO] Bleve index initialized with default analyzer")
 		return nil
 	}
 
+	log.Printf("[DEBUG] Custom analyzer added successfully, creating index...")
+
 	// Apply custom analyzer to content field
 	contentField := bleve.NewTextFieldMapping()
 	contentField.Analyzer = "ngram_analyzer"
 	mapping.DefaultMapping.AddFieldMappingsAt("content", contentField)
 
+	log.Printf("[DEBUG] Creating in-memory index with custom mapping...")
+
 	// Create in-memory index with custom mapping
 	idx.bleveIdx, err = bleve.NewMemOnly(mapping)
 	if err != nil {
-		log.Printf("[WARN] Failed to create index with ngram: %v, using default", err)
+		log.Printf("[ERROR] Failed to create index with ngram: %v", err)
+		log.Printf("[DEBUG] Falling back to default analyzer")
 		idx.bleveIdx, _ = bleve.NewMemOnly(bleve.NewIndexMapping())
+		log.Printf("[INFO] Bleve index initialized with default analyzer")
+		return nil
 	}
+
+	// Verify analyzer is available
+	analyzerNames := mapping.AnalyzerNames()
+	log.Printf("[DEBUG] Available analyzers in mapping: %v", analyzerNames)
 
 	log.Printf("[INFO] Bleve index initialized with Edge N-gram analyzer (min=2, max=10)")
 	return nil
@@ -879,9 +893,11 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 	}
 
 	// Use MatchQuery with N-gram analyzer to match indexed n-grams
+	log.Printf("[DEBUG] Creating MatchQuery with analyzer 'ngram_analyzer' for query: %q", query)
 	matchQuery := bleve.NewMatchQuery(query)
 	matchQuery.Analyzer = "ngram_analyzer"
 
+	log.Printf("[DEBUG] Executing Bleve search...")
 	searchRequest := bleve.NewSearchRequest(matchQuery)
 	searchRequest.Size = k * 2
 	searchRequest.From = 0
