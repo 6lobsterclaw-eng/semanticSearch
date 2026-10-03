@@ -141,6 +141,12 @@ func setupLlamaScreen() {
 		SetTextColor(tcell.ColorBlack)
 	flex.AddItem(title, 3, 0, false)
 
+	// Section headers as TextView
+	embedHeader := tview.NewTextView().
+		SetText("=== EMBEDDING MODEL (for vector search) ===").
+		SetTextColor(tcell.ColorBlue | tcell.AttrBold)
+	flex.AddItem(embedHeader, 1, 0, false)
+
 	// Model path inputs
 	form := tview.NewForm()
 
@@ -152,20 +158,23 @@ func setupLlamaScreen() {
 	llmModelPath := "C:\\llama.cpp\\models\\qwen3-8b-q4_k_m.gguf"
 	llmPort := "8081"
 
-	// Section headers using AddTextView with correct signature
-	form.AddTextView("Embed Model:", "=== EMBEDDING MODEL (for vector search) ===", 60, 1, true)
-	form.AddInputField("Model Path:", embedModelPath, 60, nil, func(text string) {
+	form.AddInputField("Embed Model Path:", embedModelPath, 60, nil, func(text string) {
 		embedModelPath = text
 	})
-	form.AddInputField("Port:", embedPort, 10, nil, func(text string) {
+	form.AddInputField("Embed Port:", embedPort, 10, nil, func(text string) {
 		embedPort = text
 	})
 
-	form.AddTextView("LLM Model:", "=== LLM MODEL (for question generation) ===", 60, 1, true)
-	form.AddInputField("Model Path:", llmModelPath, 60, nil, func(text string) {
+	// LLM section header
+	llmHeader := tview.NewTextView().
+		SetText("=== LLM MODEL (for question generation) ===").
+		SetTextColor(tcell.ColorBlue | tcell.AttrBold)
+	flex.AddItem(llmHeader, 1, 0, false)
+
+	form.AddInputField("LLM Model Path:", llmModelPath, 60, nil, func(text string) {
 		llmModelPath = text
 	})
-	form.AddInputField("Port:", llmPort, 10, nil, func(text string) {
+	form.AddInputField("LLM Port:", llmPort, 10, nil, func(text string) {
 		llmPort = text
 	})
 
