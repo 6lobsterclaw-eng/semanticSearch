@@ -853,8 +853,6 @@ func (idx *Indexer) searchSemanticWeighted(query string, k int) []SearchResult {
 			}
 		}
 		
-			p.parentID, p.schildMax, p.sparent, p.finalScore)
-		
 		// Show child chunk extract (not parent)
 		extract := boldKeyword(bestChild.child.Sentence, query)
 		
