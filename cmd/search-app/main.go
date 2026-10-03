@@ -931,24 +931,38 @@ func main() {
 
 	// Export index endpoint
 	http.HandleFunc("/export", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("[EXPORT] Request received")
+		
 		if idx == nil {
+			log.Printf("[EXPORT] Error: idx is nil")
 			fmt.Fprint(w, `{"success": false, "error": "no index"}`)
 			return
 		}
 
 		path := r.URL.Query().Get("path")
+		log.Printf("[EXPORT] path=%q", path)
 		if path == "" {
+			log.Printf("[EXPORT] Error: no path provided")
 			fmt.Fprint(w, `{"success": false, "error": "no path"}`)
+			return
+		}
+
+		count := idx.ChunkCount()
+		log.Printf("[EXPORT] ChunkCount=%d", count)
+		if count == 0 {
+			log.Printf("[EXPORT] Error: no chunks to export")
+			fmt.Fprint(w, `{"success": false, "error": "no chunks"}`)
 			return
 		}
 
 		err := idx.Export(path)
 		if err != nil {
+			log.Printf("[EXPORT] Error: %v", err)
 			fmt.Fprintf(w, `{"success": false, "error": "%v"}`, err)
 			return
 		}
 
-		count := idx.ChunkCount()
+		log.Printf("[EXPORT] Success: exported %d chunks to %s", count, path)
 		fmt.Fprintf(w, `{"success": true, "count": %d}`, count)
 	})
 
@@ -977,19 +991,25 @@ func main() {
 
 	// Import index endpoint
 	http.HandleFunc("/import", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("[IMPORT] Request received")
+		
 		path := r.URL.Query().Get("path")
+		log.Printf("[IMPORT] path=%q", path)
 		if path == "" {
+			log.Printf("[IMPORT] Error: no path provided")
 			fmt.Fprint(w, `{"success": false, "error": "no path"}`)
 			return
 		}
 
 		err := idx.Import(path)
 		if err != nil {
+			log.Printf("[IMPORT] Error: %v", err)
 			fmt.Fprintf(w, `{"success": false, "error": "%v"}`, err)
 			return
 		}
 
 		count := idx.ChunkCount()
+		log.Printf("[IMPORT] Success: imported %d chunks from %s", count, path)
 		fmt.Fprintf(w, `{"success": true, "count": %d}`, count)
 	})
 

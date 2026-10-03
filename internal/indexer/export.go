@@ -3,6 +3,7 @@ package indexer
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -28,6 +29,8 @@ func (idx *Indexer) ChunkCount() int {
 
 // Export exports the entire index (vector + bleve + metadata) to a directory
 func (idx *Indexer) Export(dirPath string) error {
+	log.Printf("[EXPORT] Starting export to %s", dirPath)
+	
 	// Create export directory
 	if err := os.MkdirAll(dirPath, 0755); err != nil {
 		return fmt.Errorf("failed to create export dir: %w", err)
@@ -35,12 +38,14 @@ func (idx *Indexer) Export(dirPath string) error {
 
 	// 1. Export vector index
 	vectorPath := filepath.Join(dirPath, "vectors.bin")
+	log.Printf("[EXPORT] Writing vectors to %s", vectorPath)
 	if err := idx.index.WriteFile(vectorPath); err != nil {
 		return fmt.Errorf("failed to export vectors: %w", err)
 	}
 
 	// 2. Export Bleve index
 	if idx.bleveIdx != nil {
+		log.Printf("[EXPORT] Closing and exporting Bleve index")
 		blevePath := filepath.Join(dirPath, "bleve")
 		if err := idx.bleveIdx.Close(); err != nil {
 			return fmt.Errorf("failed to close bleve: %w", err)
@@ -48,9 +53,12 @@ func (idx *Indexer) Export(dirPath string) error {
 		// Move temp bleve index to export location
 		tempBlevePath := filepath.Join(os.TempDir(), "bleve_ngram_index")
 		if _, err := os.Stat(tempBlevePath); err == nil {
+			log.Printf("[EXPORT] Moving bleve from %s to %s", tempBlevePath, blevePath)
 			if err := os.Rename(tempBlevePath, blevePath); err != nil {
 				return fmt.Errorf("failed to move bleve index: %w", err)
 			}
+		} else {
+			log.Printf("[EXPORT] Warning: temp bleve path not found: %s", tempBlevePath)
 		}
 		// Re-create bleve index for continued use
 		if err := idx.InitBleveIndex(); err != nil {
@@ -73,6 +81,7 @@ func (idx *Indexer) Export(dirPath string) error {
 		ParentMap:    idx.parentMap,
 		StoredChunks: idx.storedChunks,
 	}
+	log.Printf("[EXPORT] Writing metadata: docCount=%d, fileCount=%d, storedChunks=%d", idx.docCount, idx.fileCount, len(idx.storedChunks))
 	data, err := json.Marshal(meta)
 	if err != nil {
 		return fmt.Errorf("failed to marshal metadata: %w", err)
@@ -81,13 +90,17 @@ func (idx *Indexer) Export(dirPath string) error {
 		return fmt.Errorf("failed to write metadata: %w", err)
 	}
 
+	log.Printf("[EXPORT] Complete")
 	return nil
 }
 
 // Import imports the entire index from a directory
 func (idx *Indexer) Import(dirPath string) error {
+	log.Printf("[IMPORT] Starting import from %s", dirPath)
+	
 	// 1. Import vector index
 	vectorPath := filepath.Join(dirPath, "vectors.bin")
+	log.Printf("[IMPORT] Reading vectors from %s", vectorPath)
 	if err := idx.index.ReadFile(vectorPath); err != nil {
 		return fmt.Errorf("failed to import vectors: %w", err)
 	}
@@ -95,6 +108,7 @@ func (idx *Indexer) Import(dirPath string) error {
 	// 2. Import Bleve index
 	blevePath := filepath.Join(dirPath, "bleve")
 	if _, err := os.Stat(blevePath); err == nil {
+		log.Printf("[IMPORT] Found bleve index, importing...")
 		// Close existing bleve if any
 		if idx.bleveIdx != nil {
 			idx.bleveIdx.Close()
@@ -112,10 +126,13 @@ func (idx *Indexer) Import(dirPath string) error {
 		if err != nil {
 			return fmt.Errorf("failed to open bleve index: %w", err)
 		}
+	} else {
+		log.Printf("[IMPORT] No bleve index found at %s", blevePath)
 	}
 
 	// 3. Import metadata
 	metaPath := filepath.Join(dirPath, "metadata.json")
+	log.Printf("[IMPORT] Reading metadata from %s", metaPath)
 	data, err := os.ReadFile(metaPath)
 	if err != nil {
 		return fmt.Errorf("failed to read metadata: %w", err)
@@ -136,6 +153,7 @@ func (idx *Indexer) Import(dirPath string) error {
 	idx.parentMap = meta.ParentMap
 	idx.storedChunks = meta.StoredChunks
 
+	log.Printf("[IMPORT] Complete: docCount=%d, fileCount=%d, storedChunks=%d", idx.docCount, idx.fileCount, len(idx.storedChunks))
 	return nil
 }
 
