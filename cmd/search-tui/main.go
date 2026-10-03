@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	github.com/semantic-search/internal/indexer
+	"github.com/semantic-search/internal/indexer"
 	"github.com/semantic-search/internal/semantic"
 	"github.com/rivo/tview"
 )
