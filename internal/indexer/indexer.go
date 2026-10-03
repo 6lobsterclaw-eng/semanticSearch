@@ -1043,13 +1043,13 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 			}
 		}
 		
-		// Keep only if at least 50% of query n-grams are found AND IDF score is significant
+		// Keep only if at least 25% of query n-grams are found AND IDF score is significant
 		matchRatio := float64(matchingNgrams) / float64(len(queryNgrams))
 		log.Printf("[DEBUG] Hit %s: matchRatio=%.2f, idfScore=%.2f, matchingNgrams=%d/%d", 
 			hit.ID, matchRatio, idfScore, matchingNgrams, len(queryNgrams))
 		
-		// Skip hits where less than 50% of n-grams match OR IDF <= 1.0
-		if matchRatio < 0.5 || idfScore <= 1.0 {
+		// Lower threshold to 25% to allow more misspellings
+		if matchRatio < 0.25 || idfScore <= 1.0 {
 			continue
 		}
 		
