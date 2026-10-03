@@ -1059,7 +1059,9 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		
 		// Use original sentence, try to bold the matched term
 		extract := chunk.Sentence
-		
+	
+		log.Printf("[DEBUG] Bold check: query=%q, content=%q", queryLower, extract[:min(50, len(extract))])
+	
 		// Priority 1: Bold exact query term if found in content
 		extractLower := strings.ToLower(extract)
 		idx := strings.Index(extractLower, queryLower)
@@ -1068,7 +1070,9 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 			extract = strings.Replace(extract, actual, "<b>"+actual+"</b>", 1)
 			log.Printf("[DEBUG] Bolded exact query: %s", query)
 		} else if hit.Fragments != nil {
+			log.Printf("[DEBUG] Fragments available: %+v", hit.Fragments)
 			if fragments, ok := hit.Fragments["content"]; ok && len(fragments) > 0 {
+				log.Printf("[DEBUG] Fragment: %s", fragments[0])
 				// Extract matched terms from fragment (words between <mark> tags)
 				frag := fragments[0]
 				// Find terms wrapped in <mark>...</mark>
@@ -1077,6 +1081,7 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 				if len(matches) > 0 {
 					// Bold only the first matched term (most relevant)
 					matchedTerm := matches[0][1]
+					log.Printf("[DEBUG] Matched term from fragment: %s", matchedTerm)
 					// Find and bold the actual term in the sentence
 					matchedLower := strings.ToLower(matchedTerm)
 					idx := strings.Index(extractLower, matchedLower)
@@ -1084,6 +1089,21 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 						actual := extract[idx:idx+len(matchedTerm)]
 						extract = strings.Replace(extract, actual, "<b>"+actual+"</b>", 1)
 						log.Printf("[DEBUG] Bolded matched term: %s", matchedTerm)
+					}
+				}
+			}
+		} else {
+			log.Printf("[DEBUG] No fragments in hit, trying fuzzy match on content")
+			// Try fuzzy: find n-gram matches in content
+			// Extract 2-3 character substrings from query and look for them
+			for n := 2; n <= 3 && n < len(query); n++ {
+				for i := 0; i <= len(query)-n; i++ {
+					ngram := query[i:i+n]
+					if idx := strings.Index(extractLower, ngram); idx >= 0 {
+						actual := extract[idx:idx+n]
+						extract = strings.Replace(extract, actual, "<b>"+actual+"</b>", 1)
+						log.Printf("[DEBUG] Bolded ngram: %s (from fuzzy match)", ngram)
+						break
 					}
 				}
 			}
