@@ -948,31 +948,23 @@ func (idx *Indexer) searchKeyword(query string, k int) []SearchResult {
 		}
 	}
 	
-	// Use Split Analyzer Strategy: query BOTH fields with boosting
-	// - content: Standard analyzer (exact match) - higher priority
-	// - content_ngram: N-gram analyzer (fuzzy match) - fallback
+	// Use Split Analyzer Strategy via Query String Syntax
+	// Boost exact match (content) higher than fuzzy match (content_ngram)
+	// Format: "(content:query)^3 OR (content_ngram:query)"
+	queryStr := fmt.Sprintf("(content:%s)^3 OR (content_ngram:%s)", query, query)
 	
-	// Create BoolQuery with should (OR) - boosts exact match higher
-	boolQuery := bleve.NewBoolQuery()
+	queryParser := bleve.NewQueryParser()
+	parsedQuery, err := queryParser.Parse(queryStr)
+	if err != nil {
+		log.Printf("[ERROR] Query parse failed: %v", err)
+		// Fallback to simple match query on content
+		parsedQuery = bleve.NewMatchQuery(query)
+		parsedQuery.FieldVal = "content"
+	}
 	
-	// Exact match query on content field (boosted)
-	exactQuery := bleve.NewMatchQuery(query)
-	exactQuery.FieldVal = "content"
-	exactQuery.Analyzer = "standard"
-	boolQuery.Should = append(boolQuery.Should, exactQuery)
-	
-	// Fuzzy match query on content_ngram field (lower boost)
-	fuzzyQuery := bleve.NewMatchQuery(query)
-	fuzzyQuery.FieldVal = "content_ngram"
-	fuzzyQuery.Analyzer = "ngram_analyzer"
-	boolQuery.Should = append(boolQuery.Should, fuzzyQuery)
-	
-	// Set minimum should match to 1 (either can match)
-	boolQuery.MinShould = 1
-	
-	log.Printf("[DEBUG] Using Split Analyzer: bool query (content[boost] + content_ngram[fallback]), query=%q", query)
+	log.Printf("[DEBUG] Using Split Analyzer: query_string=%q", queryStr)
 
-	searchRequest := bleve.NewSearchRequest(boolQuery)
+	searchRequest := bleve.NewSearchRequest(parsedQuery)
 	searchRequest.Size = k * 2
 	searchRequest.From = 0
 	
