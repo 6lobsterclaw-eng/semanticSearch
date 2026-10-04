@@ -380,14 +380,17 @@ func startLlamaServer(modelPath, port string, embedding bool) {
 	debugLog("Running command: %v", args)
 	
 	llamaProc = exec.Command(args[0], args[1:]...)
+	debugLog("After exec.Command")
 	
 	// Redirect output to log files (after exec.Command)
 	logFile, err := os.OpenFile("llama-server.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	debugLog("After OpenFile, err=%v", err)
 	if err == nil {
 		llamaProc.Stdout = logFile
 		llamaProc.Stderr = logFile
 	}
 
+	debugLog("Before llamaProc.Start()")
 	if err := llamaProc.Start(); err != nil {
 		debugLog("Failed to start: %v", err)
 		return
@@ -396,7 +399,9 @@ func startLlamaServer(modelPath, port string, embedding bool) {
 	debugLog("llamaProc.Start() succeeded, pid=%d", llamaProc.Process.Pid)
 
 	serverRunning = true
+	debugLog("Before updateEmbedStatus")
 	updateEmbedStatus(true)
+	debugLog("After updateEmbedStatus")
 	// Note: Don't call updateStatus from goroutine - it can block
 
 	// Wait in background
