@@ -227,10 +227,20 @@ func setupLlamaScreen() {
 	// Form
 	form := tview.NewForm()
 
-	// Embedding model dropdown
-	form.AddDropDown("Embedding Model:", modelOptions, embedModelIndex, func(option string, optionIndex int) {
-		embedModelIndex = optionIndex
-	})
+	// Embedding model dropdown with status
+	embedFlex := tview.NewFlex().SetDirection(tview.FlexColumn)
+	embedDropdown := tview.NewDropDown().
+		SetLabel("Embedding Model: ").
+		SetOptions(modelOptions, func(option string, optionIndex int) {
+			embedModelIndex = optionIndex
+		})
+	embedDropdown.SetCurrentOption(embedModelIndex)
+	embedStatusView = tview.NewTextView().
+		SetText(" [red]●[white]").
+		SetTextColor(tcell.ColorRed)
+	embedFlex.AddItem(embedDropdown, 0, 1, true)
+	embedFlex.AddItem(embedStatusView, 3, 0, false)
+	flex.AddItem(embedFlex, 1, 0, false)
 
 	// LLM section header
 	llmHeader := tview.NewTextView().
@@ -238,21 +248,20 @@ func setupLlamaScreen() {
 		SetTextColor(tcell.ColorBlue)
 	flex.AddItem(llmHeader, 1, 0, false)
 
-	// LLM model dropdown
-	form.AddDropDown("LLM Model:", modelOptions, llmModelIndex, func(option string, optionIndex int) {
-		llmModelIndex = optionIndex
-	})
-
-	// Status indicators with colored dots
-	embedStatusView = tview.NewTextView().
-		SetText("[red]● OFF").
-		SetTextColor(tcell.ColorRed)
-	flex.AddItem(embedStatusView, 1, 0, false)
-
+	// LLM model dropdown with status
+	llmFlex := tview.NewFlex().SetDirection(tview.FlexColumn)
+	llmDropdown := tview.NewDropDown().
+		SetLabel("LLM Model: ").
+		SetOptions(modelOptions, func(option string, optionIndex int) {
+			llmModelIndex = optionIndex
+		})
+	llmDropdown.SetCurrentOption(llmModelIndex)
 	llmStatusView = tview.NewTextView().
-		SetText("[red]● OFF").
+		SetText(" [red]●[white]").
 		SetTextColor(tcell.ColorRed)
-	flex.AddItem(llmStatusView, 1, 0, false)
+	llmFlex.AddItem(llmDropdown, 0, 1, true)
+	llmFlex.AddItem(llmStatusView, 3, 0, false)
+	flex.AddItem(llmFlex, 1, 0, false)
 
 	form.AddButton("Start Both", func() {
 		// Catch any panic
@@ -820,9 +829,9 @@ func updateEmbedStatus(running bool) {
 	app.QueueUpdate(func() {
 		if embedStatusView != nil {
 			if running {
-				embedStatusView.SetText("[green]● Running").SetTextColor(tcell.ColorGreen)
+				embedStatusView.SetText(" [green]●[white]").SetTextColor(tcell.ColorGreen)
 			} else {
-				embedStatusView.SetText("[red]● OFF").SetTextColor(tcell.ColorRed)
+				embedStatusView.SetText(" [red]●[white]").SetTextColor(tcell.ColorRed)
 			}
 		}
 	})
@@ -833,9 +842,9 @@ func updateLLMStatus(running bool) {
 	app.QueueUpdate(func() {
 		if llmStatusView != nil {
 			if running {
-				llmStatusView.SetText("[green]● Running").SetTextColor(tcell.ColorGreen)
+				llmStatusView.SetText(" [green]●[white]").SetTextColor(tcell.ColorGreen)
 			} else {
-				llmStatusView.SetText("[red]● OFF").SetTextColor(tcell.ColorRed)
+				llmStatusView.SetText(" [red]●[white]").SetTextColor(tcell.ColorRed)
 			}
 		}
 	})
