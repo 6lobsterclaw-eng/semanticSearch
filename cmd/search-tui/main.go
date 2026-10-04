@@ -236,8 +236,8 @@ func setupLlamaScreen() {
 		})
 	embedDropdown.SetCurrentOption(embedModelIndex)
 	embedStatusView = tview.NewTextView().
-		SetText(" [red]●").
-		SetTextColor(tcell.ColorRed)
+		SetText("[red]●[white]").
+		SetDynamicColors(true)
 	embedFlex.AddItem(embedDropdown, 0, 1, true)
 	embedFlex.AddItem(embedStatusView, 5, 0, false)
 	flex.AddItem(embedFlex, 1, 0, false)
@@ -257,8 +257,8 @@ func setupLlamaScreen() {
 		})
 	llmDropdown.SetCurrentOption(llmModelIndex)
 	llmStatusView = tview.NewTextView().
-		SetText(" [red]●").
-		SetTextColor(tcell.ColorRed)
+		SetText("[red]●[white]").
+		SetDynamicColors(true)
 	llmFlex.AddItem(llmDropdown, 0, 1, true)
 	llmFlex.AddItem(llmStatusView, 5, 0, false)
 	flex.AddItem(llmFlex, 1, 0, false)
@@ -840,9 +840,9 @@ func updateEmbedStatus(running bool) {
 		if embedStatusView != nil {
 			debugLog("Setting embed status: %v", running)
 			if running {
-				embedStatusView.SetText(" [green]●").SetTextColor(tcell.ColorGreen)
+				embedStatusView.SetText("[green]●[white]")
 			} else {
-				embedStatusView.SetText(" [red]●").SetTextColor(tcell.ColorRed)
+				embedStatusView.SetText("[red]●[white]")
 			}
 		}
 	})
@@ -855,9 +855,9 @@ func updateLLMStatus(running bool) {
 		if llmStatusView != nil {
 			debugLog("Setting LLM status: %v", running)
 			if running {
-				llmStatusView.SetText(" [green]●").SetTextColor(tcell.ColorGreen)
+				llmStatusView.SetText("[green]●[white]")
 			} else {
-				llmStatusView.SetText(" [red]●").SetTextColor(tcell.ColorRed)
+				llmStatusView.SetText("[red]●[white]")
 			}
 		}
 	})
