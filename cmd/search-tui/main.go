@@ -26,6 +26,16 @@ func debugLog(format string, args ...interface{}) {
 	}
 }
 
+// Global panic handler
+func init() {
+	defer func() {
+		if r := recover(); r != nil {
+			debugLog("GLOBAL PANIC: %v", r)
+			fmt.Fprintf(os.Stderr, "PANIC: %v\n", r)
+		}
+	}()
+}
+
 var (
 	app           *tview.Application
 	pages         *tview.Pages
@@ -65,6 +75,13 @@ type SearchResult struct {
 }
 
 func main() {
+	// Catch any panic in main
+	defer func() {
+		if r := recover(); r != nil {
+			debugLog("PANIC in main: %v", r)
+		}
+	}()
+	
 	// Auto-detect exe folder and GGUF files
 	var err error
 	exeFolder, err = detect.FindExeFolder()
@@ -223,6 +240,14 @@ func setupLlamaScreen() {
 	})
 
 	form.AddButton("Start Both", func() {
+		// Catch any panic
+		defer func() {
+			if r := recover(); r != nil {
+				debugLog("PANIC in Start Both button: %v", r)
+				updateStatus(fmt.Sprintf("Panic: %v", r))
+			}
+		}()
+		
 		debugLog("Start button clicked")
 		debugLog("ggufFiles length: %d", len(ggufFiles))
 		debugLog("embedModelIndex: %d, llmModelIndex: %d", embedModelIndex, llmModelIndex)
@@ -313,14 +338,26 @@ func startLlamaServer(modelPath, port string, embedding bool) {
 	}
 
 	debugLog("Running command: %v", args)
+	
+	// Catch any panic in this function
+	defer func() {
+		if r := recover(); r != nil {
+			debugLog("PANIC in startLlamaServer: %v", r)
+			updateStatus(fmt.Sprintf("Panic: %v", r))
+		}
+	}()
+	
 	llamaProc = exec.Command(args[0], args[1:]...)
 	llamaProc.Stdout = os.Stdout
 	llamaProc.Stderr = os.Stderr
 
 	if err := llamaProc.Start(); err != nil {
+		debugLog("Failed to start: %v", err)
 		updateStatus(fmt.Sprintf("Failed to start: %v", err))
 		return
 	}
+
+	debugLog("llamaProc.Start() succeeded, pid=%d", llamaProc.Process.Pid)
 
 	serverRunning = true
 	updateStatus(fmt.Sprintf("Embedding server started on port %s", port))
