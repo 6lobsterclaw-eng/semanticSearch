@@ -28,9 +28,6 @@ var (
 	llmProc          *exec.Cmd
 	llmServerRunning bool
 
-	// GPU mode: true = GPU (ngl 999), false = CPU only (ngl 0)
-	useGPU bool = true
-
 	// UI components
 	statusLabel    *tview.TextView
 	searchInput    *tview.InputField
@@ -42,7 +39,6 @@ var (
 
 	// Auto-detected paths
 	exeFolder      string
-	llamaServerPath string
 	ggufFiles      []string
 
 	// Selected models (indices into ggufFiles)
@@ -65,12 +61,6 @@ func main() {
 	if err != nil {
 		log.Printf("Warning: Could not find exe folder: %v", err)
 		exeFolder = "."
-	}
-
-	// Auto-detect llama-server.exe
-	llamaServerPath, err = detect.FindLlamaServer(exeFolder)
-	if err != nil {
-		log.Printf("llama-server.exe not found in %s: %v", exeFolder, err)
 	}
 
 	// Auto-detect GGUF files
@@ -176,8 +166,8 @@ func setupLlamaScreen() {
 	flex.AddItem(title, 3, 0, false)
 
 	// Auto-detect info
-	infoText := fmt.Sprintf("Exe Folder: %s\nllama-server.exe: %s\nGGUF Files: %d found",
-		exeFolder, llamaServerPath, len(ggufFiles))
+	infoText := fmt.Sprintf("Exe Folder: %s\nGGUF Files: %d found",
+		exeFolder, len(ggufFiles))
 	infoView := tview.NewTextView().
 		SetText(infoText).
 		SetTextColor(tcell.ColorDarkGray)
@@ -204,13 +194,9 @@ func setupLlamaScreen() {
 	// Form
 	form := tview.NewForm()
 
-	// Embedding model (port 8080)
-	embedPort := "8080"
+	// Embedding model dropdown
 	form.AddDropDown("Embedding Model:", modelOptions, embedModelIndex, func(option string, optionIndex int) {
 		embedModelIndex = optionIndex
-	})
-	form.AddInputField("Embed Port:", embedPort, 10, nil, func(text string) {
-		embedPort = text
 	})
 
 	// LLM section header
@@ -219,23 +205,9 @@ func setupLlamaScreen() {
 		SetTextColor(tcell.ColorBlue)
 	flex.AddItem(llmHeader, 1, 0, false)
 
-	// LLM model (port 8081)
-	llmPort := "8081"
+	// LLM model dropdown
 	form.AddDropDown("LLM Model:", modelOptions, llmModelIndex, func(option string, optionIndex int) {
 		llmModelIndex = optionIndex
-	})
-	form.AddInputField("LLM Port:", llmPort, 10, nil, func(text string) {
-		llmPort = text
-	})
-
-	// GPU mode checkbox
-	form.AddCheckbox("Use GPU (95%)", true, func(checked bool) {
-		useGPU = checked
-		if checked {
-			updateStatus("GPU mode: ON (-ngl 999)")
-		} else {
-			updateStatus("GPU mode: OFF (CPU only, -ngl 0)")
-		}
 	})
 
 	form.AddButton("Start Both", func() {
@@ -249,8 +221,8 @@ func setupLlamaScreen() {
 		}
 		embedModelPath := filepath.Join(exeFolder, ggufFiles[embedModelIndex])
 		llmModelPath := filepath.Join(exeFolder, ggufFiles[llmModelIndex])
-		startLlamaServer(embedModelPath, embedPort, true)
-		go startLLMServer(llmModelPath, llmPort)
+		startLlamaServer(embedModelPath, "8080", true)
+		go startLLMServer(llmModelPath, "8081")
 	})
 
 	form.AddButton("Stop Both", func() {
@@ -288,24 +260,12 @@ func startLlamaServer(modelPath, port string, embedding bool) {
 		return
 	}
 
-	// Determine GPU layers
-	ngl := "0"
-	if useGPU {
-		ngl = "999"
-	}
-
-	// Use detected llama-server path or default
-	serverExe := "llama-server.exe"
-	if llamaServerPath != "" {
-		serverExe = llamaServerPath
-	}
-
-	// Start llama-server
+	// Start llama-server (always CPU)
 	args := []string{
-		serverExe,
+		"llama-server.exe",
 		"-m", modelPath,
 		"-p", port,
-		"-ngl", ngl,
+		"-ngl", "0",
 	}
 	if embedding {
 		args = append(args, "--embedding", "true")
@@ -346,24 +306,12 @@ func startLLMServer(modelPath, port string) {
 		return
 	}
 
-	// Determine GPU layers
-	ngl := "0"
-	if useGPU {
-		ngl = "999"
-	}
-
-	// Use detected llama-server path or default
-	serverExe := "llama-server.exe"
-	if llamaServerPath != "" {
-		serverExe = llamaServerPath
-	}
-
-	// Start llama-server (no embedding flag for LLM)
+	// Start llama-server (always CPU, no embedding flag for LLM)
 	llmProc = exec.Command(
-		serverExe,
+		"llama-server.exe",
 		"-m", modelPath,
 		"-p", port,
-		"-ngl", ngl,
+		"-ngl", "0",
 	)
 	llmProc.Stdout = os.Stdout
 	llmProc.Stderr = os.Stderr
