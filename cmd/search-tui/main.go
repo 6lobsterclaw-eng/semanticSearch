@@ -341,8 +341,9 @@ func startLlamaServer(modelPath, port string, embedding bool) {
 		"--port", port,
 		"-ngl", "0",
 	}
+	// Only add --embedding flag for embedding server (no value needed)
 	if embedding {
-		args = append(args, "--embedding", "true")
+		args = append(args, "--embedding")
 	}
 
 	debugLog("Running command: %v", args)
