@@ -48,6 +48,10 @@ var (
 	llmProc          *exec.Cmd
 	llmServerRunning bool
 
+	// Server status indicators (for UI)
+	embedStatusView *tview.TextView
+	llmStatusView   *tview.TextView
+
 	// UI components
 	statusLabel    *tview.TextView
 	searchInput    *tview.InputField
@@ -239,6 +243,17 @@ func setupLlamaScreen() {
 		llmModelIndex = optionIndex
 	})
 
+	// Status indicators with colored dots
+	embedStatusView = tview.NewTextView().
+		SetText("[red]● OFF").
+		SetTextColor(tcell.ColorRed)
+	flex.AddItem(embedStatusView, 1, 0, false)
+
+	llmStatusView = tview.NewTextView().
+		SetText("[red]● OFF").
+		SetTextColor(tcell.ColorRed)
+	flex.AddItem(llmStatusView, 1, 0, false)
+
 	form.AddButton("Start Both", func() {
 		// Catch any panic
 		defer func() {
@@ -365,6 +380,7 @@ func startLlamaServer(modelPath, port string, embedding bool) {
 	debugLog("llamaProc.Start() succeeded, pid=%d", llamaProc.Process.Pid)
 
 	serverRunning = true
+	updateEmbedStatus(true)
 	// Note: Don't call updateStatus from goroutine - it can block
 
 	// Wait in background
@@ -374,6 +390,7 @@ func startLlamaServer(modelPath, port string, embedding bool) {
 		serverRunning = false
 		llamaProc = nil
 		llamaMutex.Unlock()
+		updateEmbedStatus(false)
 		debugLog("Embedding server stopped")
 	}()
 }
@@ -425,6 +442,7 @@ func startLLMServer(modelPath, port string) {
 
 	debugLog("LLM server started, pid=%d", llmProc.Process.Pid)
 	llmServerRunning = true
+	updateLLMStatus(true)
 	// Note: Don't call updateStatus from goroutine
 
 	// Wait in background
@@ -432,6 +450,7 @@ func startLLMServer(modelPath, port string) {
 		llmProc.Wait()
 		llmServerRunning = false
 		llmProc = nil
+		updateLLMStatus(false)
 		debugLog("LLM server stopped")
 	}()
 }
@@ -792,6 +811,32 @@ func updateStatus(msg string) {
 	app.QueueUpdate(func() {
 		if statusLabel != nil {
 			statusLabel.SetText(msg)
+		}
+	})
+}
+
+// Update embed server status indicator
+func updateEmbedStatus(running bool) {
+	app.QueueUpdate(func() {
+		if embedStatusView != nil {
+			if running {
+				embedStatusView.SetText("[green]● Running").SetTextColor(tcell.ColorGreen)
+			} else {
+				embedStatusView.SetText("[red]● OFF").SetTextColor(tcell.ColorRed)
+			}
+		}
+	})
+}
+
+// Update LLM server status indicator
+func updateLLMStatus(running bool) {
+	app.QueueUpdate(func() {
+		if llmStatusView != nil {
+			if running {
+				llmStatusView.SetText("[green]● Running").SetTextColor(tcell.ColorGreen)
+			} else {
+				llmStatusView.SetText("[red]● OFF").SetTextColor(tcell.ColorRed)
+			}
 		}
 	})
 }
