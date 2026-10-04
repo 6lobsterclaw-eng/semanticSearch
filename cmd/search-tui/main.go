@@ -515,46 +515,8 @@ func setupIndexScreen() {
 		folderPath = text
 	})
 
-	form.AddButton("Browse...", func() {
-		// Use PowerShell to open Windows folder browser dialog (runs in background)
-		go func() {
-			// Use a simpler approach - create temp script and run it
-			script := `
-Add-Type -AssemblyName System.Windows.Forms
-$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-$dialog.Description = "Select folder to index"
-if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-	Write-Output $dialog.SelectedPath
-}
-`
-			tmpFile := filepath.Join(os.TempDir(), "browse_folder.ps1")
-			err := os.WriteFile(tmpFile, []byte(script), 0644)
-			if err != nil {
-				app.QueueUpdate(func() {
-					updateStatus("Error creating script")
-				})
-				return
-			}
-			defer os.Remove(tmpFile)
-
-			cmd := exec.Command("powershell", "-ExecutionPolicy", "Bypass", "-File", tmpFile)
-			output, err := cmd.Output()
-			if err != nil {
-				app.QueueUpdate(func() {
-					updateStatus("Browse cancelled or error")
-				})
-				return
-			}
-			selectedPath := strings.TrimSpace(string(output))
-			if selectedPath != "" {
-				app.QueueUpdate(func() {
-					folderPath = selectedPath
-					form.GetFormItemByLabel("Folder Path:").(*tview.InputField).SetText(selectedPath)
-					updateStatus("Selected: " + selectedPath)
-				})
-			}
-		}()
-	})
+	// Note: Browse button disabled - please type full path manually
+	// form.AddButton("Browse...", func() { ... })
 
 	form.AddButton("Index", func() {
 		if folderPath == "" {
