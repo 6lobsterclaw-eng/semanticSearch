@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"semantic-search/internal/detect"
 	"semantic-search/internal/indexer"
 
 	"github.com/gdamore/tcell/v2"
@@ -38,6 +39,15 @@ var (
 	// State
 	currentMode    string // "semantic", "keyword", "hybrid"
 	currentResults []SearchResult
+
+	// Auto-detected paths
+	exeFolder      string
+	llamaServerPath string
+	ggufFiles      []string
+
+	// Selected models (indices into ggufFiles)
+	embedModelIndex int
+	llmModelIndex   int
 )
 
 type SearchResult struct {
@@ -49,6 +59,27 @@ type SearchResult struct {
 }
 
 func main() {
+	// Auto-detect exe folder and GGUF files
+	var err error
+	exeFolder, err = detect.FindExeFolder()
+	if err != nil {
+		log.Printf("Warning: Could not find exe folder: %v", err)
+		exeFolder = "."
+	}
+
+	// Auto-detect llama-server.exe
+	llamaServerPath, err = detect.FindLlamaServer(exeFolder)
+	if err != nil {
+		log.Printf("llama-server.exe not found in %s: %v", exeFolder, err)
+	}
+
+	// Auto-detect GGUF files
+	ggufFiles, _ = detect.FindGGUFFiles(exeFolder)
+	log.Printf("Found GGUF files: %v", ggufFiles)
+	if len(ggufFiles) == 0 {
+		log.Printf("No GGUF files found in %s", exeFolder)
+	}
+
 	// Initialize tview
 	app = tview.NewApplication()
 
@@ -139,30 +170,44 @@ func setupLlamaScreen() {
 
 	// Title
 	title := tview.NewTextView().
-		SetText("Llama Server").
+		SetText("Llama Server - Auto-detected from exe folder").
 		SetTextAlign(tview.AlignCenter).
 		SetTextColor(tcell.ColorBlack)
 	flex.AddItem(title, 3, 0, false)
 
-	// Section headers as TextView
-	embedHeader := tview.NewTextView().
-		SetText("=== EMBEDDING MODEL (for vector search) ===").
-		SetTextColor(tcell.ColorBlue)
-	flex.AddItem(embedHeader, 1, 0, false)
+	// Auto-detect info
+	infoText := fmt.Sprintf("Exe Folder: %s\nllama-server.exe: %s\nGGUF Files: %d found",
+		exeFolder, llamaServerPath, len(ggufFiles))
+	infoView := tview.NewTextView().
+		SetText(infoText).
+		SetTextColor(tcell.ColorDarkGray)
+	flex.AddItem(infoView, 4, 0, false)
 
-	// Model path inputs
+	// Prepare options for dropdowns
+	var modelOptions []string
+	if len(ggufFiles) == 0 {
+		modelOptions = []string{"(No GGUF files found)"}
+	} else {
+		modelOptions = ggufFiles
+	}
+
+	// Default selection
+	if len(ggufFiles) >= 1 {
+		embedModelIndex = 0
+	}
+	if len(ggufFiles) >= 2 {
+		llmModelIndex = 1
+	} else {
+		llmModelIndex = 0
+	}
+
+	// Form
 	form := tview.NewForm()
 
 	// Embedding model (port 8080)
-	embedModelPath := "C:\\llama.cpp\\models\\qwen3-0.6b-q4_k_m.gguf"
 	embedPort := "8080"
-
-	// LLM model (port 8081)
-	llmModelPath := "C:\\llama.cpp\\models\\qwen3-8b-q4_k_m.gguf"
-	llmPort := "8081"
-
-	form.AddInputField("Embed Model Path:", embedModelPath, 60, nil, func(text string) {
-		embedModelPath = text
+	form.AddDropDown("Embedding Model:", modelOptions, embedModelIndex, func(option string, optionIndex int) {
+		embedModelIndex = optionIndex
 	})
 	form.AddInputField("Embed Port:", embedPort, 10, nil, func(text string) {
 		embedPort = text
@@ -170,12 +215,14 @@ func setupLlamaScreen() {
 
 	// LLM section header
 	llmHeader := tview.NewTextView().
-		SetText("=== LLM MODEL (for question generation) ===").
+		SetText("=== LLM MODEL (for answer generation) ===").
 		SetTextColor(tcell.ColorBlue)
 	flex.AddItem(llmHeader, 1, 0, false)
 
-	form.AddInputField("LLM Model Path:", llmModelPath, 60, nil, func(text string) {
-		llmModelPath = text
+	// LLM model (port 8081)
+	llmPort := "8081"
+	form.AddDropDown("LLM Model:", modelOptions, llmModelIndex, func(option string, optionIndex int) {
+		llmModelIndex = optionIndex
 	})
 	form.AddInputField("LLM Port:", llmPort, 10, nil, func(text string) {
 		llmPort = text
@@ -192,6 +239,16 @@ func setupLlamaScreen() {
 	})
 
 	form.AddButton("Start Both", func() {
+		if len(ggufFiles) == 0 || embedModelIndex >= len(ggufFiles) {
+			updateStatus("No embedding model selected")
+			return
+		}
+		if len(ggufFiles) == 0 || llmModelIndex >= len(ggufFiles) {
+			updateStatus("No LLM model selected")
+			return
+		}
+		embedModelPath := filepath.Join(exeFolder, ggufFiles[embedModelIndex])
+		llmModelPath := filepath.Join(exeFolder, ggufFiles[llmModelIndex])
 		startLlamaServer(embedModelPath, embedPort, true)
 		go startLLMServer(llmModelPath, llmPort)
 	})
@@ -237,9 +294,15 @@ func startLlamaServer(modelPath, port string, embedding bool) {
 		ngl = "999"
 	}
 
+	// Use detected llama-server path or default
+	serverExe := "llama-server.exe"
+	if llamaServerPath != "" {
+		serverExe = llamaServerPath
+	}
+
 	// Start llama-server
 	args := []string{
-		"llama-server.exe",
+		serverExe,
 		"-m", modelPath,
 		"-p", port,
 		"-ngl", ngl,
@@ -289,9 +352,15 @@ func startLLMServer(modelPath, port string) {
 		ngl = "999"
 	}
 
+	// Use detected llama-server path or default
+	serverExe := "llama-server.exe"
+	if llamaServerPath != "" {
+		serverExe = llamaServerPath
+	}
+
 	// Start llama-server (no embedding flag for LLM)
 	llmProc = exec.Command(
-		"llama-server.exe",
+		serverExe,
 		"-m", modelPath,
 		"-p", port,
 		"-ngl", ngl,
