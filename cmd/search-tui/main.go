@@ -283,7 +283,9 @@ func setupLlamaScreen() {
 		
 		debugLog("Starting servers...")
 		startLlamaServer(embedModelPath, "8080", true)
+		debugLog("After startLlamaServer")
 		go startLLMServer(llmModelPath, "8081")
+		debugLog("After startLLMServer goroutine")
 		debugLog("Servers started")
 	})
 
@@ -374,6 +376,15 @@ func startLlamaServer(modelPath, port string, embedding bool) {
 }
 
 func startLLMServer(modelPath, port string) {
+	debugLog("startLLMServer: modelPath=%s, port=%s", modelPath, port)
+	
+	// Catch panic
+	defer func() {
+		if r := recover(); r != nil {
+			debugLog("PANIC in startLLMServer: %v", r)
+		}
+	}()
+	
 	if llmServerRunning {
 		updateStatus("LLM server already running")
 		return
@@ -382,12 +393,14 @@ func startLLMServer(modelPath, port string) {
 	// Check if model exists
 	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
 		updateStatus(fmt.Sprintf("LLM Model not found: %s", modelPath))
+		debugLog("LLM Model not found: %v", err)
 		return
 	}
 
 	// Start llama-server (always CPU, no embedding flag for LLM)
 	// Use full path to llama-server.exe in exe folder
 	llamaServerPath := filepath.Join(exeFolder, "llama-server.exe")
+	debugLog("LLM: Running command: %s -m %s -p %s -ngl 0", llamaServerPath, modelPath, port)
 	llmProc = exec.Command(
 		llamaServerPath,
 		"-m", modelPath,
@@ -398,10 +411,12 @@ func startLLMServer(modelPath, port string) {
 	llmProc.Stderr = os.Stderr
 
 	if err := llmProc.Start(); err != nil {
-		updateStatus(fmt.Sprintf("Failed to start LLM: %v", err))
+		debugLog("LLM Failed to start: %v", err)
+		updateStatus(fmt.Sprintf("LLM Failed to start: %v", err))
 		return
 	}
 
+	debugLog("LLM server started, pid=%d", llmProc.Process.Pid)
 	llmServerRunning = true
 	updateStatus(fmt.Sprintf("LLM server started on port %s", port))
 
