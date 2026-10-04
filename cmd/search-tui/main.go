@@ -354,14 +354,13 @@ func startLlamaServer(modelPath, port string, embedding bool) {
 
 	if err := llamaProc.Start(); err != nil {
 		debugLog("Failed to start: %v", err)
-		updateStatus(fmt.Sprintf("Failed to start: %v", err))
 		return
 	}
 
 	debugLog("llamaProc.Start() succeeded, pid=%d", llamaProc.Process.Pid)
 
 	serverRunning = true
-	updateStatus(fmt.Sprintf("Embedding server started on port %s", port))
+	// Note: Don't call updateStatus from goroutine - it can block
 
 	// Wait in background
 	go func() {
@@ -370,7 +369,7 @@ func startLlamaServer(modelPath, port string, embedding bool) {
 		serverRunning = false
 		llamaProc = nil
 		llamaMutex.Unlock()
-		updateStatus("Embedding server stopped")
+		debugLog("Embedding server stopped")
 	}()
 }
 
@@ -411,20 +410,19 @@ func startLLMServer(modelPath, port string) {
 
 	if err := llmProc.Start(); err != nil {
 		debugLog("LLM Failed to start: %v", err)
-		updateStatus(fmt.Sprintf("LLM Failed to start: %v", err))
 		return
 	}
 
 	debugLog("LLM server started, pid=%d", llmProc.Process.Pid)
 	llmServerRunning = true
-	updateStatus(fmt.Sprintf("LLM server started on port %s", port))
+	// Note: Don't call updateStatus from goroutine
 
 	// Wait in background
 	go func() {
 		llmProc.Wait()
 		llmServerRunning = false
 		llmProc = nil
-		updateStatus("LLM server stopped")
+		debugLog("LLM server stopped")
 	}()
 }
 
