@@ -24,8 +24,11 @@ var (
 	serverRunning bool
 
 	// Two servers: one for embedding, one for LLM
-	llmProc       *exec.Cmd
+	llmProc          *exec.Cmd
 	llmServerRunning bool
+
+	// GPU mode: true = GPU (ngl 999), false = CPU only (ngl 0)
+	useGPU bool = true
 
 	// UI components
 	statusLabel    *tview.TextView
@@ -178,6 +181,16 @@ func setupLlamaScreen() {
 		llmPort = text
 	})
 
+	// GPU mode checkbox
+	form.AddCheckbox("Use GPU (95%)", true, func(checked bool) {
+		useGPU = checked
+		if checked {
+			updateStatus("GPU mode: ON (-ngl 999)")
+		} else {
+			updateStatus("GPU mode: OFF (CPU only, -ngl 0)")
+		}
+	})
+
 	form.AddButton("Start Both", func() {
 		startLlamaServer(embedModelPath, embedPort, true)
 		go startLLMServer(llmModelPath, llmPort)
@@ -218,12 +231,18 @@ func startLlamaServer(modelPath, port string, embedding bool) {
 		return
 	}
 
+	// Determine GPU layers
+	ngl := "0"
+	if useGPU {
+		ngl = "999"
+	}
+
 	// Start llama-server
 	args := []string{
 		"llama-server.exe",
 		"-m", modelPath,
 		"-p", port,
-		"-ngl", "0",
+		"-ngl", ngl,
 	}
 	if embedding {
 		args = append(args, "--embedding", "true")
@@ -264,12 +283,18 @@ func startLLMServer(modelPath, port string) {
 		return
 	}
 
+	// Determine GPU layers
+	ngl := "0"
+	if useGPU {
+		ngl = "999"
+	}
+
 	// Start llama-server (no embedding flag for LLM)
 	llmProc = exec.Command(
 		"llama-server.exe",
 		"-m", modelPath,
 		"-p", port,
-		"-ngl", "0",
+		"-ngl", ngl,
 	)
 	llmProc.Stdout = os.Stdout
 	llmProc.Stderr = os.Stderr
