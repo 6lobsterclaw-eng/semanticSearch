@@ -835,8 +835,10 @@ func updateStatus(msg string) {
 
 // Update embed server status indicator
 func updateEmbedStatus(running bool) {
+	debugLog("updateEmbedStatus called: running=%v, embedStatusView=%v", running, embedStatusView != nil)
 	app.QueueUpdate(func() {
 		if embedStatusView != nil {
+			debugLog("Setting embed status: %v", running)
 			if running {
 				embedStatusView.SetText(" [green]●").SetTextColor(tcell.ColorGreen)
 			} else {
@@ -848,8 +850,10 @@ func updateEmbedStatus(running bool) {
 
 // Update LLM server status indicator
 func updateLLMStatus(running bool) {
+	debugLog("updateLLMStatus called: running=%v, llmStatusView=%v", running, llmStatusView != nil)
 	app.QueueUpdate(func() {
 		if llmStatusView != nil {
+			debugLog("Setting LLM status: %v", running)
 			if running {
 				llmStatusView.SetText(" [green]●").SetTextColor(tcell.ColorGreen)
 			} else {
