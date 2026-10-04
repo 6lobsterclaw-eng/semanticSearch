@@ -159,6 +159,14 @@ func main() {
             <button id="startLLMBtn" onclick="startLLMServer()" disabled>Start</button>
             <span id="llmStatus" style="margin-left: 5px;">●</span>
         </div>
+
+        <div style="padding: 10px; background: #e7f1ff; border-radius: 5px; margin-top: 10px;">
+            <label style="cursor: pointer;">
+                <input type="checkbox" id="useGPU" checked> 
+                <strong>Use GPU</strong> (95% GPU / 5% CPU)
+            </label>
+            <br><small>Uncheck for CPU only (-ngl 0)</small>
+        </div>
     </div>
     
     <div class="step">
@@ -266,11 +274,12 @@ func main() {
         
         function startServer() {
             var model = document.getElementById('modelSelect').value;
+            var useGPU = document.getElementById('useGPU').checked;
             if (!model) { alert('Please select a model'); return; }
 
             setEmbedderStatus('orange');
             
-            fetch('/startServer?model=' + encodeURIComponent(model))
+            fetch('/startServer?model=' + encodeURIComponent(model) + '&gpu=' + useGPU)
                 .then(r => r.json())
                 .then(d => {
                     if (d.success) {
@@ -285,11 +294,12 @@ func main() {
         
         function startLLMServer() {
             var model = document.getElementById('llmModelSelect').value;
+            var useGPU = document.getElementById('useGPU').checked;
             if (!model) { alert('Please select a model'); return; }
             
             setLLMStatus('orange');
             
-            fetch('/startLLMServer?model=' + encodeURIComponent(model))
+            fetch('/startLLMServer?model=' + encodeURIComponent(model) + '&gpu=' + useGPU)
                 .then(r => r.json())
                 .then(d => {
                     if (d.success) {
@@ -692,6 +702,15 @@ func main() {
 	// Start server endpoint - starts async and returns immediately
 	http.HandleFunc("/startServer", func(w http.ResponseWriter, r *http.Request) {
 		model := r.URL.Query().Get("model")
+		gpuParam := r.URL.Query().Get("gpu")
+		useGPU := gpuParam == "true"
+
+		// Determine ngl value
+		ngl := "0"
+		if useGPU {
+			ngl = "999"
+		}
+
 		if model == "" {
 			fmt.Fprint(w, `{"success": false, "error": "no model selected"}`)
 			return
@@ -709,14 +728,14 @@ func main() {
 		port := 8080
 		serverURL = fmt.Sprintf("http://localhost:%d", port)
 
-		log.Printf("Starting server: %s -m %s --port %d", serverPath, modelPath, port)
+		log.Printf("Starting server: %s -m %s --port %d -ngl %s", serverPath, modelPath, port, ngl)
 
 		serverStatus = "starting"
 		serverStatusMsg = "Starting llama-server..."
 
 		// Start server in background
 		go func() {
-			serverCmd = exec.Command(serverPath, "-m", modelPath, "--port", fmt.Sprintf("%d", port), "-c", "2048", "--embeddings", "-ngl", "999")
+			serverCmd = exec.Command(serverPath, "-m", modelPath, "--port", fmt.Sprintf("%d", port), "-c", "2048", "--embeddings", "-ngl", ngl)
 			serverCmd.Stdout = log.Writer()
 			serverCmd.Stderr = log.Writer()
 
@@ -774,6 +793,15 @@ func main() {
 
 	http.HandleFunc("/startLLMServer", func(w http.ResponseWriter, r *http.Request) {
 		model := r.URL.Query().Get("model")
+		gpuParam := r.URL.Query().Get("gpu")
+		useGPU := gpuParam == "true"
+
+		// Determine ngl value
+		ngl := "0"
+		if useGPU {
+			ngl = "999"
+		}
+
 		if model == "" {
 			fmt.Fprint(w, `{"success": false, "error": "no model selected"}`)
 			return
@@ -791,7 +819,7 @@ func main() {
 		port := 8082
 		llmServerURL = fmt.Sprintf("http://localhost:%d", port)
 
-		log.Printf("Starting LLM server: %s -m %s --port %d", serverPath, modelPath, port)
+		log.Printf("Starting LLM server: %s -m %s --port %d -ngl %s", serverPath, modelPath, port, ngl)
 
 		llmServerStatus = "starting"
 
@@ -802,7 +830,7 @@ func main() {
 				llmServerCmd.Process.Kill()
 			}
 
-			llmServerCmd = exec.Command(serverPath, "-m", modelPath, "--port", fmt.Sprintf("%d", port), "-c", "4096", "-ngl", "999")
+			llmServerCmd = exec.Command(serverPath, "-m", modelPath, "--port", fmt.Sprintf("%d", port), "-c", "4096", "-ngl", ngl)
 			llmServerCmd.Stdout = log.Writer()
 			llmServerCmd.Stderr = log.Writer()
 
