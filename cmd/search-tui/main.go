@@ -211,18 +211,43 @@ func setupLlamaScreen() {
 	})
 
 	form.AddButton("Start Both", func() {
+		fmt.Println("DEBUG: Start button clicked")
+		fmt.Printf("DEBUG: ggufFiles length: %d\n", len(ggufFiles))
+		fmt.Printf("DEBUG: embedModelIndex: %d, llmModelIndex: %d\n", embedModelIndex, llmModelIndex)
+		
 		if len(ggufFiles) == 0 || embedModelIndex >= len(ggufFiles) {
 			updateStatus("No embedding model selected")
+			fmt.Println("DEBUG: No embedding model")
 			return
 		}
 		if len(ggufFiles) == 0 || llmModelIndex >= len(ggufFiles) {
 			updateStatus("No LLM model selected")
+			fmt.Println("DEBUG: No LLM model")
 			return
 		}
+		
 		embedModelPath := filepath.Join(exeFolder, ggufFiles[embedModelIndex])
 		llmModelPath := filepath.Join(exeFolder, ggufFiles[llmModelIndex])
+		
+		fmt.Printf("DEBUG: embedModelPath: %s\n", embedModelPath)
+		fmt.Printf("DEBUG: llmModelPath: %s\n", llmModelPath)
+		
+		// Check files exist
+		if _, err := os.Stat(embedModelPath); os.IsNotExist(err) {
+			updateStatus(fmt.Sprintf("Embed model not found: %s", embedModelPath))
+			fmt.Printf("DEBUG: Embed model not found: %v\n", err)
+			return
+		}
+		if _, err := os.Stat(llmModelPath); os.IsNotExist(err) {
+			updateStatus(fmt.Sprintf("LLM model not found: %s", llmModelPath))
+			fmt.Printf("DEBUG: LLM model not found: %v\n", err)
+			return
+		}
+		
+		fmt.Println("DEBUG: Starting servers...")
 		startLlamaServer(embedModelPath, "8080", true)
 		go startLLMServer(llmModelPath, "8081")
+		fmt.Println("DEBUG: Servers started")
 	})
 
 	form.AddButton("Stop Both", func() {
@@ -249,6 +274,8 @@ func startLlamaServer(modelPath, port string, embedding bool) {
 	llamaMutex.Lock()
 	defer llamaMutex.Unlock()
 
+	fmt.Printf("DEBUG startLlamaServer: modelPath=%s, port=%s, embedding=%v\n", modelPath, port, embedding)
+
 	if serverRunning {
 		updateStatus("Llama server already running")
 		return
@@ -271,6 +298,7 @@ func startLlamaServer(modelPath, port string, embedding bool) {
 		args = append(args, "--embedding", "true")
 	}
 
+	fmt.Printf("DEBUG: Running command: %v\n", args)
 	llamaProc = exec.Command(args[0], args[1:]...)
 	llamaProc.Stdout = os.Stdout
 	llamaProc.Stderr = os.Stderr
