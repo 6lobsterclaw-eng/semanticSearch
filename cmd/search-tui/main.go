@@ -281,9 +281,9 @@ func setupLlamaScreen() {
 			return
 		}
 		
-		debugLog("Starting servers...")
-		startLlamaServer(embedModelPath, "8080", true)
-		debugLog("After startLlamaServer")
+		debugLog("Starting servers in goroutines...")
+		go startLlamaServer(embedModelPath, "8080", true)
+		debugLog("After startLlamaServer goroutine")
 		go startLLMServer(llmModelPath, "8081")
 		debugLog("After startLLMServer goroutine")
 		debugLog("Servers started")
@@ -310,18 +310,24 @@ func setupLlamaScreen() {
 }
 
 func startLlamaServer(modelPath, port string, embedding bool) {
-	llamaMutex.Lock()
-	defer llamaMutex.Unlock()
-
 	debugLog("startLlamaServer: modelPath=%s, port=%s, embedding=%v", modelPath, port, embedding)
 
+	// Catch any panic in this function
+	defer func() {
+		if r := recover(); r != nil {
+			debugLog("PANIC in startLlamaServer: %v", r)
+		}
+	}()
+
 	if serverRunning {
+		debugLog("Llama server already running")
 		updateStatus("Llama server already running")
 		return
 	}
 
 	// Check if model exists
 	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
+		debugLog("Model not found: %v", err)
 		updateStatus(fmt.Sprintf("Model not found: %s", modelPath))
 		return
 	}
@@ -340,14 +346,6 @@ func startLlamaServer(modelPath, port string, embedding bool) {
 	}
 
 	debugLog("Running command: %v", args)
-	
-	// Catch any panic in this function
-	defer func() {
-		if r := recover(); r != nil {
-			debugLog("PANIC in startLlamaServer: %v", r)
-			updateStatus(fmt.Sprintf("Panic: %v", r))
-		}
-	}()
 	
 	llamaProc = exec.Command(args[0], args[1:]...)
 	llamaProc.Stdout = os.Stdout
