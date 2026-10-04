@@ -343,6 +343,13 @@ func startLlamaServer(modelPath, port string, embedding bool) {
 		}
 	}()
 
+	// Catch any panic in this function
+	defer func() {
+		if r := recover(); r != nil {
+			debugLog("PANIC in startLlamaServer: %v", r)
+		}
+	}()
+
 	if serverRunning {
 		debugLog("Llama server already running")
 		updateStatus("Llama server already running")
@@ -372,14 +379,14 @@ func startLlamaServer(modelPath, port string, embedding bool) {
 
 	debugLog("Running command: %v", args)
 	
-	// Redirect output to log files
+	llamaProc = exec.Command(args[0], args[1:]...)
+	
+	// Redirect output to log files (after exec.Command)
 	logFile, err := os.OpenFile("llama-server.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err == nil {
 		llamaProc.Stdout = logFile
 		llamaProc.Stderr = logFile
 	}
-	
-	llamaProc = exec.Command(args[0], args[1:]...)
 
 	if err := llamaProc.Start(); err != nil {
 		debugLog("Failed to start: %v", err)
