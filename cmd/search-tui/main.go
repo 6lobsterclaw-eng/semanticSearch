@@ -306,7 +306,7 @@ func setupLlamaScreen() {
 		}
 		
 		debugLog("Starting servers in goroutines...")
-		go startLlamaServer(embedModelPath, "8080", true)
+		go startLlamaServer(embedModelPath, "8080")
 		debugLog("After startLlamaServer goroutine")
 		go startLLMServer(llmModelPath, "8081")
 		debugLog("After startLLMServer goroutine")
@@ -333,8 +333,8 @@ func setupLlamaScreen() {
 	pages.AddPage("llama", flex, true, false)
 }
 
-func startLlamaServer(modelPath, port string, embedding bool) {
-	debugLog("startLlamaServer: modelPath=%s, port=%s, embedding=%v", modelPath, port, embedding)
+func startLlamaServer(modelPath, port string) {
+	debugLog("startLlamaServer: modelPath=%s, port=%s", modelPath, port)
 
 	// Catch any panic in this function
 	defer func() {
@@ -372,10 +372,7 @@ func startLlamaServer(modelPath, port string, embedding bool) {
 		"--port", port,
 		"-ngl", "0",
 	}
-	// Only add --embedding flag for embedding server (no value needed)
-	if embedding {
-		args = append(args, "--embedding")
-	}
+	// Note: embedding mode is determined by the model itself, no flag needed
 
 	debugLog("Running command: %v", args)
 	
