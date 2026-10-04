@@ -16,6 +16,16 @@ import (
 	"github.com/rivo/tview"
 )
 
+// Simple debug log to file
+func debugLog(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	f, err := os.OpenFile("debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err == nil {
+		f.WriteString(msg + "\n")
+		f.Close()
+	}
+}
+
 var (
 	app           *tview.Application
 	pages         *tview.Pages
@@ -63,11 +73,13 @@ func main() {
 		exeFolder = "."
 	}
 
+	debugLog("Startup: exeFolder=%s", exeFolder)
+
 	// Auto-detect GGUF files
 	ggufFiles, _ = detect.FindGGUFFiles(exeFolder)
-	log.Printf("Found GGUF files: %v", ggufFiles)
+	debugLog("Startup: found %d GGUF files: %v", len(ggufFiles), ggufFiles)
 	if len(ggufFiles) == 0 {
-		log.Printf("No GGUF files found in %s", exeFolder)
+		debugLog("No GGUF files found in %s", exeFolder)
 	}
 
 	// Initialize tview
@@ -211,43 +223,43 @@ func setupLlamaScreen() {
 	})
 
 	form.AddButton("Start Both", func() {
-		fmt.Println("DEBUG: Start button clicked")
-		fmt.Printf("DEBUG: ggufFiles length: %d\n", len(ggufFiles))
-		fmt.Printf("DEBUG: embedModelIndex: %d, llmModelIndex: %d\n", embedModelIndex, llmModelIndex)
+		debugLog("Start button clicked")
+		debugLog("ggufFiles length: %d", len(ggufFiles))
+		debugLog("embedModelIndex: %d, llmModelIndex: %d", embedModelIndex, llmModelIndex)
 		
 		if len(ggufFiles) == 0 || embedModelIndex >= len(ggufFiles) {
 			updateStatus("No embedding model selected")
-			fmt.Println("DEBUG: No embedding model")
+			debugLog("No embedding model")
 			return
 		}
 		if len(ggufFiles) == 0 || llmModelIndex >= len(ggufFiles) {
 			updateStatus("No LLM model selected")
-			fmt.Println("DEBUG: No LLM model")
+			debugLog("No LLM model")
 			return
 		}
 		
 		embedModelPath := filepath.Join(exeFolder, ggufFiles[embedModelIndex])
 		llmModelPath := filepath.Join(exeFolder, ggufFiles[llmModelIndex])
 		
-		fmt.Printf("DEBUG: embedModelPath: %s\n", embedModelPath)
-		fmt.Printf("DEBUG: llmModelPath: %s\n", llmModelPath)
+		debugLog("embedModelPath: %s", embedModelPath)
+		debugLog("llmModelPath: %s", llmModelPath)
 		
 		// Check files exist
 		if _, err := os.Stat(embedModelPath); os.IsNotExist(err) {
 			updateStatus(fmt.Sprintf("Embed model not found: %s", embedModelPath))
-			fmt.Printf("DEBUG: Embed model not found: %v\n", err)
+			debugLog("Embed model not found: %v", err)
 			return
 		}
 		if _, err := os.Stat(llmModelPath); os.IsNotExist(err) {
 			updateStatus(fmt.Sprintf("LLM model not found: %s", llmModelPath))
-			fmt.Printf("DEBUG: LLM model not found: %v\n", err)
+			debugLog("LLM model not found: %v", err)
 			return
 		}
 		
-		fmt.Println("DEBUG: Starting servers...")
+		debugLog("Starting servers...")
 		startLlamaServer(embedModelPath, "8080", true)
 		go startLLMServer(llmModelPath, "8081")
-		fmt.Println("DEBUG: Servers started")
+		debugLog("Servers started")
 	})
 
 	form.AddButton("Stop Both", func() {
@@ -274,7 +286,7 @@ func startLlamaServer(modelPath, port string, embedding bool) {
 	llamaMutex.Lock()
 	defer llamaMutex.Unlock()
 
-	fmt.Printf("DEBUG startLlamaServer: modelPath=%s, port=%s, embedding=%v\n", modelPath, port, embedding)
+	debugLog("startLlamaServer: modelPath=%s, port=%s, embedding=%v", modelPath, port, embedding)
 
 	if serverRunning {
 		updateStatus("Llama server already running")
@@ -298,7 +310,7 @@ func startLlamaServer(modelPath, port string, embedding bool) {
 		args = append(args, "--embedding", "true")
 	}
 
-	fmt.Printf("DEBUG: Running command: %v\n", args)
+	debugLog("Running command: %v", args)
 	llamaProc = exec.Command(args[0], args[1:]...)
 	llamaProc.Stdout = os.Stdout
 	llamaProc.Stderr = os.Stderr
