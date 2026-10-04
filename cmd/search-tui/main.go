@@ -236,10 +236,10 @@ func setupLlamaScreen() {
 		})
 	embedDropdown.SetCurrentOption(embedModelIndex)
 	embedStatusView = tview.NewTextView().
-		SetText(" [red]●[white]").
+		SetText(" [red]●").
 		SetTextColor(tcell.ColorRed)
 	embedFlex.AddItem(embedDropdown, 0, 1, true)
-	embedFlex.AddItem(embedStatusView, 3, 0, false)
+	embedFlex.AddItem(embedStatusView, 5, 0, false)
 	flex.AddItem(embedFlex, 1, 0, false)
 
 	// LLM section header
@@ -257,10 +257,10 @@ func setupLlamaScreen() {
 		})
 	llmDropdown.SetCurrentOption(llmModelIndex)
 	llmStatusView = tview.NewTextView().
-		SetText(" [red]●[white]").
+		SetText(" [red]●").
 		SetTextColor(tcell.ColorRed)
 	llmFlex.AddItem(llmDropdown, 0, 1, true)
-	llmFlex.AddItem(llmStatusView, 3, 0, false)
+	llmFlex.AddItem(llmStatusView, 5, 0, false)
 	flex.AddItem(llmFlex, 1, 0, false)
 
 	form.AddButton("Start Both", func() {
@@ -838,9 +838,9 @@ func updateEmbedStatus(running bool) {
 	app.QueueUpdate(func() {
 		if embedStatusView != nil {
 			if running {
-				embedStatusView.SetText(" [green]●[white]").SetTextColor(tcell.ColorGreen)
+				embedStatusView.SetText(" [green]●").SetTextColor(tcell.ColorGreen)
 			} else {
-				embedStatusView.SetText(" [red]●[white]").SetTextColor(tcell.ColorRed)
+				embedStatusView.SetText(" [red]●").SetTextColor(tcell.ColorRed)
 			}
 		}
 	})
@@ -851,9 +851,9 @@ func updateLLMStatus(running bool) {
 	app.QueueUpdate(func() {
 		if llmStatusView != nil {
 			if running {
-				llmStatusView.SetText(" [green]●[white]").SetTextColor(tcell.ColorGreen)
+				llmStatusView.SetText(" [green]●").SetTextColor(tcell.ColorGreen)
 			} else {
-				llmStatusView.SetText(" [red]●[white]").SetTextColor(tcell.ColorRed)
+				llmStatusView.SetText(" [red]●").SetTextColor(tcell.ColorRed)
 			}
 		}
 	})
