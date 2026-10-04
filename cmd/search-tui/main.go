@@ -300,8 +300,10 @@ func startLlamaServer(modelPath, port string, embedding bool) {
 	}
 
 	// Start llama-server (always CPU)
+	// Use full path to llama-server.exe in exe folder
+	llamaServerPath := filepath.Join(exeFolder, "llama-server.exe")
 	args := []string{
-		"llama-server.exe",
+		llamaServerPath,
 		"-m", modelPath,
 		"-p", port,
 		"-ngl", "0",
@@ -347,8 +349,10 @@ func startLLMServer(modelPath, port string) {
 	}
 
 	// Start llama-server (always CPU, no embedding flag for LLM)
+	// Use full path to llama-server.exe in exe folder
+	llamaServerPath := filepath.Join(exeFolder, "llama-server.exe")
 	llmProc = exec.Command(
-		"llama-server.exe",
+		llamaServerPath,
 		"-m", modelPath,
 		"-p", port,
 		"-ngl", "0",
