@@ -516,7 +516,32 @@ func setupIndexScreen() {
 	})
 
 	form.AddButton("Browse...", func() {
-		updateStatus("Please type the full path")
+		// Use PowerShell to open Windows folder browser dialog (runs in background)
+		go func() {
+			cmd := exec.Command("powershell", "-Command", `
+				Add-Type -AssemblyName System.Windows.Forms
+				$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+				$dialog.Description = "Select folder to index"
+				if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+					Write-Output $dialog.SelectedPath
+				}
+			`)
+			output, err := cmd.Output()
+			if err != nil {
+				app.QueueUpdate(func() {
+					updateStatus("Browse cancelled or error")
+				})
+				return
+			}
+			selectedPath := strings.TrimSpace(string(output))
+			if selectedPath != "" {
+				app.QueueUpdate(func() {
+					folderPath = selectedPath
+					form.GetFormItemByLabel("Folder Path:").(*tview.InputField).SetText(selectedPath)
+					updateStatus("Selected: " + selectedPath)
+				})
+			}
+		}()
 	})
 
 	form.AddButton("Index", func() {
